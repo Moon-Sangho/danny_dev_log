@@ -1,0 +1,135 @@
+---
+title: 얕은 복사와 깊은 복사
+date: '2025-08-07'
+tags: ['javascript']
+draft: false
+summary: 얕은 복사와 깊은 복사의 개념과 차이점
+---
+
+JavaScript에서 객체를 복사할 때, 얕은 복사(shallow copy)와 깊은 복사(deep copy)의 개념이 중요하다.
+이 두 가지 방법은 객체의 속성을 어떻게 복사하는지에 따라 다르다.
+
+## TLDR;
+
+- 얕은 복사는 객체의 1차원 속성만 복사하고, 깊은 복사는 중첩된 객체까지 모두 복사한다.
+- 중첩 객체에서 깊은 복사를 하는 이유는 불변성을 지키기 위해서이다.
+- 얕은 복사 방법
+  - [Object.assign()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign)
+  - [Spread Operator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_syntax#spread_in_object_literals) - `{...obj}`
+- 깊은 복사 방법
+  - `JSON.parse(JSON.stringify())`
+  - [structuredClone()](https://developer.mozilla.org/en-US/docs/Web/API/Window/structuredClone)
+  - [lodash의 cloneDeep()](https://www.geeksforgeeks.org/javascript/lodash-_-clonedeep-method/) 같은 라이브러리를 사용
+  - 객체 내부의 모든 프로퍼티를 재귀적으로 복사하는 함수 사용
+
+## 얕은 복사 (Shallow Copy)
+
+얕은 복사는 객체의 1차원 속성만 복사한다.
+원시 타입(문자열, 숫자 등)인 경우에는 데이터 영역의 메모리 주소가 복사된다.
+
+```javascript
+// a 메모리주소: 1001, a 값: @2001, 1의 메모리 주소: 2001
+let a = 1
+// b 메모리주소: 1002, b 값: a 값 메모리 주소 -> @2001 참조
+let b = a
+
+console.log(b) // 1
+let a = 2
+
+console.log({ a, b }) // { a: 2, b: 1 } 원본 변수 a의 값이 변경되었지만, b는 여전히 1을 유지한다.
+```
+
+따라서 원시 타입의 경우 위와 같이 쉽게 복사할 수 있다.
+
+중첩된 객체의 경우 얕은 복사를 하면, 객체의 1차원 속성만 복사되고 중첩된 객체는 여전히 원본 객체의 메모리 주소를 참조한다.
+
+예를 들어:
+
+```javascript
+const original = {
+  name: 'Alice',
+  age: 30,
+  address: {
+    city: 'Wonderland',
+    zip: '12345',
+  },
+}
+
+const shallowCopy = Object.assign({}, original)
+const shallowCopy2 = { ...original }
+
+shallowCopy.address.city = 'New City'
+console.log(original.address.city) // 'New City'
+console.log(shallowCopy.address.city) // 'New City' - 얕은 복사된 객체도 변경됨
+console.log(shallowCopy2.address.city) // 'New City' - 얕은 복사된 객체도 변경됨
+```
+
+이렇게 중첩된 객체에 대하여 얕은 복사를 사용하면 중첩된 객체의 속성을 변경할 때 원본 객체도 영향을 받는다.
+
+## 깊은 복사 (Deep Copy)
+
+깊은 복사는 중첩 객체의 모든 속성을 재귀적으로 복사하여 새로운 메모리 공간에 저장한다.
+이렇게 하면 원본 객체와 복사된 객체가 완전히 독립적으로 동작할 수 있다.
+예를 들어:
+
+```javascript
+const original = {
+  name: 'Alice',
+  age: 30,
+  address: {
+    city: 'Wonderland',
+    zip: '12345',
+  },
+}
+
+const deepCopy = JSON.parse(JSON.stringify(original))
+
+deepCopy.address.city = 'New City'
+console.log(original.address.city) // 'Wonderland' - 원본 객체는 변경되지 않음
+console.log(deepCopy.address.city) // 'New City' - 깊은 복사된 객체는 변경됨
+```
+
+깊은 복사를 구현하는 방법은 여러 가지가 있다
+
+1. `JSON.parse(JSON.stringify(obj))`: 객체를 JSON 문자열로 변환한 후 다시 객체로 파싱하는 방법이다. 이 방법은 간단하지만, 함수나 `undefined`, `Symbol` 등은 복사할 수 없다.
+
+2. `structuredClone()`: 브라우저에서 제공하는 API로, 객체를 깊은 복사할 수 있다. 이 방법은 함수, `Date`, `Map`, `Set` 등 다양한 타입을 지원한다.
+
+3. `lodash` 라이브러리의 `cloneDeep()`: 이 라이브러리를 사용하면 깊은 복사를 쉽게 할 수 있다. 다양한 타입을 지원하며, 복잡한 객체 구조도 안전하게 복사할 수 있다.
+
+4. 객체 내부의 모든 프로퍼티를 재귀적으로 복사하는 함수 사용:
+
+   ```javascript
+   function deepCopy(obj) {
+     if (obj === null || typeof obj !== 'object') {
+       return obj // 원시 타입은 그대로 반환
+     }
+     if (Array.isArray(obj)) {
+       return obj.map(deepCopy) // 배열인 경우 재귀적으로 복사
+     }
+     const copy = {}
+     for (const key in obj) {
+       if (obj.hasOwnProperty(key)) {
+         copy[key] = deepCopy(obj[key]) // 객체의 각 속성을 재귀적으로 복사
+       }
+     }
+     return copy
+   }
+   const original = {
+     name: 'Alice',
+     age: 30,
+     address: {
+       city: 'Wonderland',
+       zip: '12345',
+     },
+   }
+   const deepCopy = deepCopy(original)
+   deepCopy.address.city = 'New City'
+   console.log(original.address.city) // 'Wonderland' - 원본 객체는 변경되지 않
+   console.log(deepCopy.address.city) // 'New City' - 깊은 복사된 객체는 변경됨
+   ```
+
+이러한 깊은 복사를 통해 객체의 불변성을 유지할 수 있다.
+불변성을 유지하는 것은 특히 프론트엔드 개발 시 중요하다. (예: React, Redux 등)
+상태가 변경될 때마다 새로운 객체를 생성하여 이전 상태와의 차이를 쉽게 추적할 수 있기 때문이다.
+이렇게 하면 상태 관리가 용이해지고, 예기치 않은 버그를 방지할 수 있다.
