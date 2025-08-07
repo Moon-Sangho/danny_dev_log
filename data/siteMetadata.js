@@ -9,7 +9,7 @@ const siteMetadata = {
   siteUrl: 'https://dannydevlog.vercel.app/',
   siteRepo: 'https://github.com/Moon-Sangho/danny_dev_log',
   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
-  socialBanner: `${process.env.BASE_PATH || ''}/static/images/twitter-card.png`,
+  socialBanner: `${process.env.BASE_PATH || ''}/static/images/og-image.webp`,
   email: 'dev.danny.moon@gmail.com',
   github: 'https://github.com/Moon-Sangho',
   linkedin: 'https://www.linkedin.com/in/sangho-moon-7b7711200/',
