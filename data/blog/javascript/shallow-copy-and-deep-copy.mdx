@@ -29,14 +29,14 @@ JavaScript에서 객체를 복사할 때, 얕은 복사(shallow copy)와 깊은 
 
 ```javascript
 // a 메모리주소: 1001, a 값: @2001, 1의 메모리 주소: 2001
-let a = 1
+let a = 1;
 // b 메모리주소: 1002, b 값: a 값 메모리 주소 -> @2001 참조
-let b = a
+let b = a;
 
-console.log(b) // 1
-let a = 2
+console.log(b); // 1
+let a = 2;
 
-console.log({ a, b }) // { a: 2, b: 1 } 원본 변수 a의 값이 변경되었지만, b는 여전히 1을 유지한다.
+console.log({ a, b }); // { a: 2, b: 1 } 원본 변수 a의 값이 변경되었지만, b는 여전히 1을 유지한다.
 ```
 
 따라서 원시 타입의 경우 위와 같이 쉽게 복사할 수 있다.
@@ -53,15 +53,15 @@ const original = {
     city: 'Wonderland',
     zip: '12345',
   },
-}
+};
 
-const shallowCopy = Object.assign({}, original)
-const shallowCopy2 = { ...original }
+const shallowCopy = Object.assign({}, original);
+const shallowCopy2 = { ...original };
 
-shallowCopy.address.city = 'New City'
-console.log(original.address.city) // 'New City'
-console.log(shallowCopy.address.city) // 'New City' - 얕은 복사된 객체도 변경됨
-console.log(shallowCopy2.address.city) // 'New City' - 얕은 복사된 객체도 변경됨
+shallowCopy.address.city = 'New City';
+console.log(original.address.city); // 'New City'
+console.log(shallowCopy.address.city); // 'New City' - 얕은 복사된 객체도 변경됨
+console.log(shallowCopy2.address.city); // 'New City' - 얕은 복사된 객체도 변경됨
 ```
 
 이렇게 중첩된 객체에 대하여 얕은 복사를 사용하면 중첩된 객체의 속성을 변경할 때 원본 객체도 영향을 받는다.
@@ -80,13 +80,13 @@ const original = {
     city: 'Wonderland',
     zip: '12345',
   },
-}
+};
 
-const deepCopy = JSON.parse(JSON.stringify(original))
+const deepCopy = JSON.parse(JSON.stringify(original));
 
-deepCopy.address.city = 'New City'
-console.log(original.address.city) // 'Wonderland' - 원본 객체는 변경되지 않음
-console.log(deepCopy.address.city) // 'New City' - 깊은 복사된 객체는 변경됨
+deepCopy.address.city = 'New City';
+console.log(original.address.city); // 'Wonderland' - 원본 객체는 변경되지 않음
+console.log(deepCopy.address.city); // 'New City' - 깊은 복사된 객체는 변경됨
 ```
 
 깊은 복사를 구현하는 방법은 여러 가지가 있다
@@ -102,18 +102,18 @@ console.log(deepCopy.address.city) // 'New City' - 깊은 복사된 객체는 �
    ```javascript
    function deepCopy(obj) {
      if (obj === null || typeof obj !== 'object') {
-       return obj // 원시 타입은 그대로 반환
+       return obj; // 원시 타입은 그대로 반환
      }
      if (Array.isArray(obj)) {
-       return obj.map(deepCopy) // 배열인 경우 재귀적으로 복사
+       return obj.map(deepCopy); // 배열인 경우 재귀적으로 복사
      }
-     const copy = {}
+     const copy = {};
      for (const key in obj) {
        if (obj.hasOwnProperty(key)) {
-         copy[key] = deepCopy(obj[key]) // 객체의 각 속성을 재귀적으로 복사
+         copy[key] = deepCopy(obj[key]); // 객체의 각 속성을 재귀적으로 복사
        }
      }
-     return copy
+     return copy;
    }
    const original = {
      name: 'Alice',
@@ -122,11 +122,11 @@ console.log(deepCopy.address.city) // 'New City' - 깊은 복사된 객체는 �
        city: 'Wonderland',
        zip: '12345',
      },
-   }
-   const deepCopy = deepCopy(original)
-   deepCopy.address.city = 'New City'
-   console.log(original.address.city) // 'Wonderland' - 원본 객체는 변경되지 않
-   console.log(deepCopy.address.city) // 'New City' - 깊은 복사된 객체는 변경됨
+   };
+   const deepCopy = deepCopy(original);
+   deepCopy.address.city = 'New City';
+   console.log(original.address.city); // 'Wonderland' - 원본 객체는 변경되지 않
+   console.log(deepCopy.address.city); // 'New City' - 깊은 복사된 객체는 변경됨
    ```
 
 이러한 깊은 복사를 통해 객체의 불변성을 유지할 수 있다.
