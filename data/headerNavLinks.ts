@@ -4,6 +4,6 @@ const headerNavLinks = [
   // 추후 활성화 예정
   // { href: '/projects', title: 'Projects' },
   { href: '/about', title: 'About' },
-]
+];
 
-export default headerNavLinks
+export default headerNavLinks;
