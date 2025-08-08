@@ -6,7 +6,7 @@ const siteMetadata = {
   description: '개발하며 마주친 문제들과 배운 것들을 기록합니다.',
   language: 'ko',
   theme: 'system', // system, dark or light
-  siteUrl: 'https://dannydevlog.vercel.app/',
+  siteUrl: 'https://dannydevlog.vercel.app',
   siteRepo: 'https://github.com/Moon-Sangho/danny_dev_log',
   siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
   socialBanner: `${process.env.BASE_PATH || ''}/static/images/og-image.webp`,
