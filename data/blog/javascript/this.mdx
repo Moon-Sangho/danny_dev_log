@@ -1,0 +1,333 @@
+---
+title: 자바스크립트에서의 This
+date: '2025-08-15'
+tags: ['javascript']
+draft: false
+summary: this 키워드의 개념과 사용법
+---
+
+다른 대부분의 객체지향 언어에서 this는 클래스로 생성한 인스턴스 객체를 의미한다. <br />
+하지만 자바스크립트에서의 this는 어디서든 사용할 수 있고, 상황에 따라 다른 객체를 가리킨다. <br />
+이 때문에 자바스크립트에서 this를 이해하는 것은 매우 중요하다.
+
+## this가 결정되는 시점
+
+앞 전 [실행 컨텍스트](https://dannydevlog.vercel.app/blog/javascript/execution-context)에서 설명했듯이, 자바스크립트는 함수가 호출될 때마다 새로운 실행 컨텍스트를 생성한다. 이때, 해당 실행 컨텍스트가 생성될 때 ThisBinding이 이루어진다. <br />
+즉, 함수를 호출할 때 this가 결정된다.
+
+그런데 이 ThisBinding 과정이 왜 필요한 걸까? <br />
+
+### 1. this 참조의 일관성 보장
+
+- 함수 내부에서 this가 무엇을 가리키는지는 함수 호출 방식에 따라 달라진다.
+- 실행 컨텍스트가 생성될 때 ThisBinding을 결정해야, 함수 실행 도중 this 참조가 항상 올바른 객체를 가리킨다.
+
+### 2. 동일 코드의 유연한 재사용
+
+- ThisBinding을 통해 개발자는 동일한 코드를 다양한 객체에 대해 재사용할 수 있다.
+- 예를 들어, 메서드를 다른 객체에 바인딩하여 호출할 수 있으며, 이때 this는 새로운 객체를 가리키게 된다.
+
+```js
+function greet() {
+  console.log(this.name);
+}
+
+const user1 = { name: 'Alice' };
+const user2 = { name: 'Bob' };
+
+greet.call(user1); // Alice
+greet.call(user2); // Bob
+```
+
+### 3. 성능과 안정성 확보
+
+- 실행 컨텍스트 생성 단계에서 ThisBinding을 결정하면, 함수 실행 중마다 this를 계산할 필요가 없다.
+- 즉, 빠른 접근과 안정성을 동시에 제공한다.
+
+## 상황에 따라 달라지는 this
+
+### 1. 전역 공간에서의 this
+
+```js:브라우저_환경
+console.log(this); // Window {window: Window, self: Window, document: document, ... }
+console.log(window); // Window {window: Window, self: Window, document: document, ... }
+console.log(this === window); // true
+```
+
+```js:Node.js_환경
+console.log(this); // global { ... }
+console.log(global); // global { ... }
+console.log(this === global); // true
+```
+
+### 2. 메서드로서 호출할 때 그 메서드 내부에서의 this
+
+함수를 실행하는 방법 중 가장 일반적인 2가지 방법은 <b>함수로서 호출</b>하는 경우와 <b>메서드로서 호출</b>하는 경우이다.
+
+```js
+var func = function (x) {
+  console.log(this, x);
+};
+
+// 함수로서 호출
+func(1); // Window { ... } 1
+
+var obj = {
+  method: func,
+};
+// 메서드로서 호출
+obj.method(2); // { method: [Function: func] } 2
+obj['method'](2); // { method: [Function: func] } 2
+```
+
+함수로서 호출과 메서드로서 호출을 구분하는 방법은 함수 앞에 점(.) 또는 대괄호([])가 있는지 여부로 판단할 수 있다. <br />
+this에는 호출한 주체에 대한 정보가 담긴다. <br />
+어떤 함수를 메서드로서 호출하는 경우 호출 주체는 바로 함수명(프로퍼티명) 앞의 객체이다.
+
+### 3. 함수로서 호출할 때 그 함수 내부에서의 this
+
+아래 코드의 실행 결과를 예측해보자.
+
+```js
+var obj1 = {
+  outer: function () {
+    console.log(this); // (1)
+    var innerFunc = function () {
+      console.log(this); // (2), (3)
+    };
+    innerFunc();
+
+    var obj2 = {
+      innerMethod: innerFunc,
+    };
+    obj2.innerMethod();
+  },
+};
+
+obj1.outer();
+```
+
+답은 아래와 같다.
+
+```js
+{ outer: [Function: outer] } // obj1
+Window { ... }
+{ innerMethod: [Function: innerFunc] } // obj2
+```
+
+- obj1.outer()를 호출했을 때 (1)의 `console.log(this)`는 obj1을 가리킨다.
+- outer 함수 내부에서 innerFunc를 호출했을 때 (2)의 `console.log(this)`는 전역 객체를 가리킨다.
+  이는 innerFunc가 함수로서 호출되었기 때문이다.
+- obj2.innerMethod()를 호출했을 때 (3)의 `console.log(this)`는 obj2를 가리킨다.
+
+아래와 같이 innerFunc에서의 this를 obj1로 고정시킬 수 있다.
+
+```js:1_변수에_this를_할당
+var obj1 = {
+  outer: function () {
+    console.log(this); // obj1
+
+    var self = this;
+    var innerFunc2 = function () {
+      console.log(self); // obj1
+    };
+    innerFunc2();
+  },
+};
+
+obj1.outer();
+```
+
+변수명은 self, that 등 원하는 이름으로 지정할 수 있지만, 원활한 협업을 위해 널리 쓰이는 단어를 활용하는 것이 좋다.
+
+```js:2_화살표함수_사용
+var obj1 = {
+  outer: function() {
+    console.log(this); // obj1
+    var innerFunc1 = () => {
+      console.log(this); // obj1
+    }
+    innerFunc1();
+  }
+};
+
+obj1.outer();
+```
+
+ES6에서는 함수 내부에서 this가 전역 객체를 가리키는 문제를 해결하기 위해 화살표 함수를 도입했다. <br />
+화살표 함수는 실행 컨텍스트를 생성할 때 this를 결정하지 않고, 상위 스코프의 this를 그대로 사용한다. <br />
+이 외에도 call, apply, bind 등의 메서드를 활용하는 방법이 있는데, 이후에 설명하도록 하겠다.
+
+### 4. 콜백 함수 호출 시 그 함수 내부에서의 this
+
+```js
+setTimeout(function () {
+  console.log(this); // Window { ... }
+}, 1000);
+
+[1, 2, 3, 4, 5].forEach(function (item) {
+  console.log(this, item); // Window { ... } 1, Window { ... } 2, ...
+});
+
+document.body.innerHTML += '<button id="a">클릭</button>';
+document.querySelector('#a').addEventListener('click', function () {
+  console.log(this); // <button id="a">클릭</button>
+});
+```
+
+### 5. 생성자 함수 내부에서의 this
+
+```js
+function User(name) {
+  this.name = name;
+}
+
+User.prototype.sayHello = function () {
+  console.log(`Hello, my name is ${this.name}`);
+};
+
+const user1 = new User('Alice');
+const user2 = new User('Bob');
+
+user1.sayHello(); // Hello, my name is Alice
+user2.sayHello(); // Hello, my name is Bob
+```
+
+## 명시적으로 this를 바인딩하는 방법
+
+### 1. call 메서드
+
+call 메서드는 함수를 호출할 때 this를 명시적으로 지정할 수 있다. <br />
+다음과 같이 사용한다.
+
+```js
+function greet() {
+  console.log(this.name);
+}
+
+const user1 = { name: 'Alice' };
+const user2 = { name: 'Bob' };
+
+greet.call(user1); // Alice
+greet.call(user2); // Bob
+
+var func = function (a, b, c) {
+  console.log(this, a, b, c);
+};
+
+func(1, 2, 3); // Window { ... } 1 2 3
+func.call({ x: 1 }, 4, 5, 6); // { x: 1 } 4 5 6
+```
+
+첫 번째 인자에 this로 바인딩할 객체를 전달하고, 이후 인자들을 전달하면 된다. <br />
+
+### 2. apply 메서드
+
+apply 메서드는 call과 유사하지만, 인자를 배열 형태로 전달한다는 점만 차이가 있다. <br />
+
+```js
+function greet() {
+  console.log(this.name);
+}
+
+const user1 = { name: 'Alice' };
+const user2 = { name: 'Bob' };
+
+greet.apply(user1); // Alice
+greet.apply(user2); // Bob
+
+var func = function (a, b, c) {
+  console.log(this, a, b, c);
+};
+
+func(1, 2, 3); // Window { ... } 1 2 3
+func.apply({ x: 1 }, [4, 5, 6]); // { x: 1 } 4 5 6
+```
+
+첫 번째 인자에 this로 바인딩할 객체를 전달하고, 이후 인자들을 배열 형태로 전달하면 된다. <br />
+
+### 3. bind 메서드
+
+bind 메서드는 함수를 호출하지 않고 this를 명시적으로 바인딩할 수 있다. <br />
+다음과 같이 사용한다.
+
+```js
+function greet() {
+  console.log(this.name);
+}
+
+const user1 = { name: 'Alice' };
+const user2 = { name: 'Bob' };
+
+const greetUser1 = greet.bind(user1);
+const greetUser2 = greet.bind(user2);
+
+greetUser1(); // Alice
+greetUser2(); // Bob
+
+var func = function (a, b, c) {
+  console.log(this, a, b, c);
+};
+
+func(1, 2, 3); // Window { ... } 1 2 3
+func.bind({ x: 1 }, 4, 5, 6)(); // { x: 1 } 4 5 6
+```
+
+bind 메서드는 새로운 함수를 반환하며, 이 함수는 지정한 this와 인자들을 사용하여 호출된다. <br />
+
+bind 메서드로 생성된 함수는 name 프로퍼티가 'bound '로 시작한다. <br />
+
+```js
+var func = function (a, b, c, d) {
+  console.log(this, a, b, c, d);
+};
+
+var boundFunc = func.bind({ x: 1 }, 4, 5, 6);
+console.log(func.name); // 'func'
+console.log(boundFunc.name); // 'bound func'
+```
+
+### 4. 별도의 인자로 this를 받는 경우(콜백 함수 내에서의 this)
+
+콜백 함수를 인자로 받는 메서드 중 일부는 추가로 this로 지정할 객체를 인자로 받을 수 있다. <br />
+`forEach`를 예로 들면, 다음과 같이 사용할 수 있다.
+
+```js
+var report = {
+  sum: 0,
+  count: 0,
+  add: function () {
+    var args = Array.prototype.slice.call(arguments);
+    args.forEach(function (entry) {
+      this.sum += entry;
+      ++this.count;
+    }, this);
+  },
+  average: function () {
+    return this.sum / this.count;
+  },
+};
+
+report.add(60, 85, 95);
+console.log(report.sum, report.count, report.average()); // 240 3 80
+```
+
+`forEach` 외에도 다양한 메서드들이 콜백 함수의 this를 바인딩할 수 있는 방법을 제공한다.
+
+```js
+Array.prototype.forEach(callback[, thisArg])
+Array.prototype.map(callback[, thisArg])
+Array.prototype.filter(callback[, thisArg])
+Array.prototype.some(callback[, initialValue])
+Array.prototype.every(callback[, initialValue])
+Array.prototype.find(callback[, thisArg])
+Array.prototype.findIndex(callback[, thisArg])
+Array.prototype.flatMap(callback[, thisArg])
+Array.prototype.from(callback[, thisArg])
+Set.prototype.forEach(callback[, thisArg])
+Map.prototype.forEach(callback[, thisArg])
+```
+
+## Reference
+
+- [코어 자바스크립트](https://product.kyobobook.co.kr/detail/S000001766397)
