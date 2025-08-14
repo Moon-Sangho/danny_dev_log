@@ -1,0 +1,99 @@
+---
+title: 최대공약수와 최소공배수
+date: '2025-08-14'
+tags: ['algorithm']
+draft: false
+summary: 프로그래머스 lv.1 최대공약수와 최소공배수 문제 풀이
+---
+
+## 문제 설명
+
+두 수를 입력받아 두 수의 최대공약수와 최소공배수를 반환하는 함수, solution을 완성해 보세요. 배열의 맨 앞에 최대공약수, 그다음 최소공배수를 넣어 반환하면 됩니다. 예를 들어 두 수 3, 12의 최대공약수는 3, 최소공배수는 12이므로 solution(3, 12)는 [3, 12]를 반환해야 합니다.
+
+- 문제 링크: [프로그래머스 - 최대공약수와 최소공배수](https://programmers.co.kr/learn/courses/30/lessons/12940)
+
+### 제한 사항
+
+두 수는 1이상 1000000이하의 자연수입니다.
+
+## 최대공약수와 최소공배수의 개념
+
+- 최대공약수(GCD, Greatest Common Divisor): 두 수의 공통된 약수 중에서 가장 큰 수
+- 최소공배수(LCM, Least Common Multiple): 두 수의 공통된 배수 중에서 가장 작은 수
+
+## 최대 공약수와 최소 공배수를 직접 구해서 풀기
+
+```js
+// 최대 공약수 구하기
+// 1. 1부터 n과 m 중 더 작은 수까지 반복
+// 2. 두 수 모두 나누어떨어지는 수`(n % i === 0 && m % i === 0)`를 찾기
+// 3. 그중 가장 큰 값을 최대공약수로 저장
+function gcdManual(n, m) {
+  let gcd = 1; // 최소 공약수는 1
+  const min = Math.min(n, m);
+
+  for (let i = 1; i <= min; i++) {
+    if (n % i === 0 && m % i === 0) {
+      gcd = i;
+    }
+  }
+  return gcd;
+}
+
+// 최소 공배수 구하기
+// 1. 두 수 중 더 큰 수부터 시작
+// 2. 1씩 증가시키면서 두 수 모두로 나누어 떨어지는 수를 찾기
+// 3. 가장 처음 발견한 값이 최소공배수
+function lcmManual(n, m) {
+  let lcm = Math.max(n, m);
+
+  while (true) {
+    if (lcm % n === 0 && lcm % m === 0) {
+      return lcm;
+    }
+    lcm++;
+  }
+}
+
+function solution(n, m) {
+  const greatest = gcdManual(n, m); // 최대공약수
+  const least = lcmManual(n, m); // 최소공배수
+  return [greatest, least];
+}
+
+console.log(solution(3, 12)); // [3, 12]
+console.log(solution(2, 5)); // [1, 10]
+console.log(solution(18, 24)); // [6, 72]
+```
+
+- 장점: 로직이 직관적이라 초보자도 이해하기 쉽다.
+- 단점: 큰 수(예: 1000000)에선 너무 느려진다.
+  - n과 m이 1,000,000이라면 → gcdManual 함수에서 i가 1부터 1,000,000까지 전부 반복
+  - n과 m이 999,983과 999,979 (둘 다 큰 소수: 소수는 1과 자기 자신 외에는 약수가 없다. 즉, 이 두 값의 최소공배수는 두 수의 곱이 된다.)라면 → lcmManual 함수에서 lcm이 999,983부터 시작해 1씩 증가하며 1조에 가까운 값까지 증가
+  - 시간복잡도: 최대공약수는 `O(n)`, 최소공배수는 최악의 경우 `O(n × m)`까지 느려질 수 있다.
+
+## 유클리드 호제법을 이용해서 풀기
+
+```js
+function solution(n, m) {
+  // 1. 최대공약수(GCD) 구하기
+  // 유클리드 호제법(Euclidean Algorithm) 사용
+  // 원리: gcd(a, b) = gcd(b, a % b)
+  function gcd(a, b) {
+    return b === 0 ? a : gcd(b, a % b);
+  }
+
+  const greatest = gcd(n, m);
+
+  // 2. 최소공배수(LCM) 구하기
+  // 원리: 두 수의 곱 = 최대공약수 × 최소공배수
+  // LCM = (a × b) / GCD
+  const least = (n * m) / greatest;
+
+  return [greatest, least];
+}
+```
+
+- 유클리드 호제법은 % 연산을 할 때마다 두 수가 훅 줄어든다.
+- 예를 들어 1,000,000과 999,983을 넣어도 20번 이하의 연산으로 끝난다.
+- 시간복잡도: `O(log n)`
