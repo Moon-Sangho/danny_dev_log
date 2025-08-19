@@ -1,0 +1,171 @@
+---
+title: 자바스크립트 Callback
+date: '2025-08-19'
+tags: ['javascript']
+draft: false
+summary: 자바스크립트에서의 Callback 함수의 개념과 사용법
+---
+
+## TLDR;
+
+- Callback 함수는 다른 함수의 인자로 전달되는 함수로, 비동기 처리와 이벤트 핸들링에 사용된다.
+- 특정 메서드의 함수를 Callback 함수로 전달하더라도, 해당 함수는 메서드가 아닌 함수로서 호출된다.
+- 중첩된 Callback 함수는 가독성을 떨어뜨리고, 에러 처리를 복잡하게 만든다.
+- 현재는 Promise, async/await 등의 대안이 등장하여 더 나은 비동기 처리를 지원한다.
+
+## Callback 함수란?
+
+Callback 함수는 다른 코드(함수, 메서드)의 인자로 넘겨주는 함수다. 다른 함수에게 인자로 Callback 함수를 넘겨줌으로써 그 제어권도 함께 위임한다. 과거 자바스크립트에서는 비동기 처리나 이벤트 핸들링에 자주 사용되는 패턴이었다.
+
+```javascript
+function fetchData(callback) {
+  setTimeout(() => {
+    const data = { id: 1, name: 'John Doe' };
+    callback(data);
+  }, 1000);
+}
+
+fetchData((data) => {
+  console.log('데이터를 가져왔습니다:', data);
+});
+```
+
+위의 예시에서 `fetchData` 함수는 1초 후에 데이터를 가져와서 콜백 함수를 호출한다. 이처럼 Callback 함수를 사용하면 비동기 작업이 완료된 후에 특정 작업을 수행할 수 있다.
+
+## Callback 함수는 함수다
+
+콜백 함수로 어떤 객체의 메서드를 전달하더라도 그 메서드는 메서드가 아닌 함수로서 호출된다. <br />
+아래 예시를 보자.
+
+```javascript
+var obj = {
+  vals: [1, 2, 3],
+  logValues: function (v, i) {
+    console.log(this, v, i);
+  },
+};
+
+obj.logValues(1, 2); // { vals: [1, 2, 3], logValues: f } 1 2
+[4, 5, 6].forEach(obj.logValues); // Window { ... } 4 0, Window { ... } 5 1, Window { ... } 6 2
+```
+
+위와 같이 forEach 함수의 인자로 객체의 메서드를 전달하더라도 그 메서드는 메서드가 아닌 함수로서 호출된다. <br />
+obj를 this로 하는 메서드를 전달한 것이 아니라, obj.logValues가 가리키는 함수만 전달한 것이다. <br />
+이 함수는 메서드로서 호출할 때가 아닌 한 obj와의 직접적인 연관이 없어진다. <br />
+forEach에 의해 콜백이 함수로서 호출되고, 별도로 this를 지정하는 인자를 지정하지 않았으므로 함수 내부에서의 this는 전역 객체를 가리킨다.
+
+## Callback 함수 내부의 this에 다른 값 바인딩하기
+
+### 1. 변수로 바인딩하기
+
+```js
+var obj1 = {
+  name: 'obj1',
+  func: function () {
+    var self = this;
+    return function () {
+      console.log(self.name);
+    };
+  },
+};
+
+var callback = obj1.func();
+setTimeout(callback, 1000); // 'obj1'
+```
+
+### 2. call, apply, bind 메서드 사용하기
+
+```js
+var obj2 = {
+  name: 'obj2',
+  func: function () {
+    return function () {
+      console.log(this.name);
+    };
+  },
+};
+
+var callback2 = obj2.func().call(obj2);
+setTimeout(callback2, 1000); // 'obj2'
+
+var callback3 = obj2.func().apply(obj2);
+setTimeout(callback3, 1000); // 'obj2'
+
+var callback4 = obj2.func().bind(obj2);
+setTimeout(callback4, 1000); // 'obj2'
+```
+
+## Callback 함수의 장점
+
+1. **비동기 처리**: Callback 함수를 사용하면 비동기 작업이 완료된 후에 원하는 작업을 수행할 수 있다.
+2. **코드의 가독성 향상**: 비동기 작업의 흐름을 명확하게 표현할 수 있어 코드의 가독성이 향상된다.
+
+## Callback 함수의 단점
+
+1. **콜백 지옥**: 여러 개의 비동기 작업이 중첩될 경우, 코드가 복잡해지고 가독성이 떨어지는 '콜백 지옥'에 빠질 수 있다.
+
+   ```js
+   // 콜백 지옥 예시
+   fetchData((data) => {
+     console.log('1. 데이터를 가져왔습니다:', data);
+     fetchData2((data) => {
+       console.log('2. 데이터를 가져왔습니다:', data);
+       fetchData3((data) => {
+         console.log('3. 데이터를 가져왔습니다:', data);
+       });
+     });
+   });
+   ```
+
+2. **에러 처리**: 중첩된 콜백 함수 내에서 에러가 발생할 경우, 이를 처리하기가 복잡해지고 가독성이 떨어질 수 있다.
+
+   ```js
+   // 가짜 비동기 함수
+   function asyncTask(name, succeed, callback) {
+     setTimeout(() => {
+       if (succeed) {
+         callback(null, `${name} 성공`);
+       } else {
+         callback(new Error(`${name} 실패`));
+       }
+     }, 500);
+   }
+
+   // 콜백 지옥 + 에러 처리 난잡한 상황
+   asyncTask('작업1', true, (err, result1) => {
+     if (err) {
+       console.error('에러 발생:', err.message);
+       return;
+     }
+     console.log(result1);
+
+     asyncTask('작업2', false, (err, result2) => {
+       if (err) {
+         console.error('에러 발생:', err.message);
+         return;
+       }
+       console.log(result2);
+
+       asyncTask('작업3', true, (err, result3) => {
+         if (err) {
+           // 계속 비슷한 에러 처리 로직이 반복됨
+           console.error('에러 발생:', err.message);
+           return;
+         }
+         console.log(result3);
+
+         asyncTask('작업4', true, (err, result4) => {
+           if (err) {
+             console.error('에러 발생:', err.message);
+             return;
+           }
+           console.log(result4);
+         });
+       });
+     });
+   });
+   ```
+
+---
+
+자바스크립트에서 Callback 함수는 비동기 처리와 이벤트 핸들링에 매우 유용하게 사용됐었다. 하지만, 코드의 복잡성이 증가하고 가독성이 떨어지는 단점이 있어 이에 대한 대안으로 `Promise`, `async/await` 등의 패턴이 등장했다. 이에 대한 자세한 내용은 다른 글에서 다루도록 하겠다.
