@@ -10,6 +10,16 @@ summary: this 키워드의 개념과 사용법
 하지만 자바스크립트에서의 this는 어디서든 사용할 수 있고, 상황에 따라 다른 객체를 가리킨다. <br />
 이 때문에 자바스크립트에서 this를 이해하는 것은 매우 중요하다.
 
+## TLDR;
+
+- this가 결정되는 시점은 함수가 호출될 때이다.
+- 자바스크립트에서 this는 호출 방식에 따라 다르게 바인딩된다.
+- 화살표 함수는 상위 스코프의 this를 참조한다.
+- call, apply, bind 메서드를 사용하여 this를 명시적으로 설정할 수 있다.
+- new 키워드를 사용하여 생성자 함수로 호출할 때 this가 새로운 인스턴스를 가리킨다.
+- 이벤트 핸들러에서의 this는 이벤트가 발생한 DOM 요소를 가리킨다.
+- forEach, map, filter와 같이 별도의 인자로 this를 받는 메서드도 있다.
+
 ## this가 결정되는 시점
 
 앞 전 [실행 컨텍스트](https://dannydevlog.vercel.app/blog/javascript/execution-context)에서 설명했듯이, 자바스크립트는 함수가 호출될 때마다 새로운 실행 컨텍스트를 생성한다. 이때, 해당 실행 컨텍스트가 생성될 때 ThisBinding이 이루어진다. <br />
