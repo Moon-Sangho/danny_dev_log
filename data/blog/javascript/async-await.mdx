@@ -1,0 +1,98 @@
+---
+title: 자바스크립트 async/await
+date: '2025-08-21'
+tags: ['javascript']
+draft: false
+summary: async/await의 개념과 사용법
+---
+
+async/await은 ES8(ECMAScript2017)에서 도입된, Promise를 보다 간편하게 사용할 수 있도록 해주는 문법이다. async/await을 사용하면 비동기 코드를 동기 코드처럼 작성할 수 있어 가독성이 높아진다.
+
+## async/await
+
+async 키워드는 함수를 비동기 함수로 만들어준다. async 함수는 항상 Promise를 반환하며, 내부에서 await 키워드를 사용하여 Promise의 결과를 기다릴 수 있다.
+
+```js
+async function fetchData() {
+  try {
+    console.log('데이터 가져오는 중...');
+    const response = await new Promise((resolve) => {
+      setTimeout(() => resolve('서버에서 받은 데이터'), 2000);
+    });
+    console.log('데이터 처리 중...');
+    const processedData = await new Promise((resolve) => {
+      setTimeout(() => resolve(`${response} 처리 완료`), 1000);
+    });
+    return processedData;
+  } catch (error) {
+    console.error('에러 발생:', error);
+  }
+}
+
+async function main() {
+  console.log('시작');
+  const result = await fetchData();
+  console.log('결과:', result);
+  console.log('종료');
+}
+
+main();
+```
+
+async 함수는 언제나 Promise를 반환하므로 아래와 같이 then 체이닝을 사용할 수도 있다.
+
+```js
+async function fetchData() {
+  return '데이터';
+}
+
+fetchData().then((data) => console.log(data)); // 데이터
+```
+
+만약 async 함수 내부에서 catch 문을 사용해서 에러 처리를 하지 않으면 async 함수는 발생한 에러를 reject하는 프로미스를 반환한다.
+
+```js
+const fetch = require('node-fetch');
+
+async function fetchData() {
+  const wrongUrl = 'https://wrongurl';
+
+  const response = await fetch(wrongUrl);
+  const data = await response.json();
+  return data;
+}
+
+fetchData()
+  .then((data) => console.log(data))
+  .catch((error) => console.error(error)); // TypeError: Failed to fetch
+```
+
+async/await을 사용할 때, 여러 개의 비동기 작업을 병렬로 실행하고 싶다면 `Promise.all()`이나 `Promise.allSettled()`를 사용할 수 있다.
+
+```js
+async function fetchData() {
+  const [data1, data2] = await Promise.all([
+    fetch('https://api.example.com/data1').then((res) => res.json()),
+    fetch('https://api.example.com/data2').then((res) => res.json()),
+  ]);
+  return { data1, data2 };
+}
+
+fetchData()
+  .then((result) => console.log(result))
+  .catch((error) => console.error(error));
+```
+
+## async/await의 장점
+
+1. **가독성**: 비동기 코드를 동기 코드처럼 작성할 수 있어 가독성이 높아진다.
+2. **에러 처리**: try/catch 문을 사용하여 에러를 간편하게 처리할 수 있다.
+
+## async/await의 단점
+
+1. **브라우저 호환성**: 구형 브라우저에서는 지원하지 않을 수 있다.
+2. **성능**: 순서가 중요하지 않은 비동기 작업에서 `await` 키워드를 무분별하게 사용하다보면 의도치 않게 성능 저하가 발생할 수 있다. 병렬 처리가 필요한 경우 `Promise.all()`을 적절하게 사용하는 것이 중요하다.
+
+## Reference
+
+- [모던 자바스크립트 Deep Dive](https://product.kyobobook.co.kr/detail/S000001766445)
