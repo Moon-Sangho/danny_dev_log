@@ -1,0 +1,215 @@
+---
+title: 자바스크립트 클로저
+date: '2025-08-22'
+tags: ['javascript']
+draft: false
+summary: 클로저의 개념 이해와 활용
+---
+
+클로저는 자바스크립트 고유의 개념이 아니다. 함수를 일급 객체로 취급하는 함수형 프로그래밍 언어(하스켈, 리스프, 얼랭, 스칼라) 등에서 사용되는 중요한 개념이다. 이번 글에서는 자바스크립트에서 클로저가 무엇인지, 어떻게 사용하는지 알아보자.
+
+## TLDR;
+
+- 클로저는 함수와 그 함수가 선언됐을 당시 외부 렉시컬 환경의 조합이다.
+- 클로저는 외부 함수의 변수를 기억하여, 외부 함수의 실행 컨텍스트가 종료된 후에도 해당 변수에 접근할 수 있게 해준다.
+- 클로저는 주로 데이터 은닉, 콜백 함수, 부분 적용 함수, 커링 등의 패턴에서 활용된다.
+- 클로저 사용 시 메모리 누수를 주의해서 사용해야 한다.
+
+## 클로저란?
+
+MDN에 따르면, 클로저란
+
+`A closure is the combination of a function bundled together (enclosed) with references to its surrounding state (the lexical environment).`
+
+"주변 상태(lexical environment)에 대한 참조와 함께 묶인(enclosed) 함수의 조합"이다.
+
+말이 확 와닿지 않는데, 아래 간단한 예제를 보자.
+
+```js
+function makeCounter() {
+  let count = 0;
+  return function () {
+    return ++count;
+  };
+}
+
+const counter = makeCounter();
+console.log(counter()); // 1
+console.log(counter()); // 2
+console.log(counter()); // 3
+```
+
+위 예제에서 makeCounter 함수의 실행 컨텍스트는 `makeCounter()` 호출 시 생성되어 콜스택에 쌓이고, 내부 변수인 count의 값을 증가시키는 익명 함수를 반환함으로써 콜스택에서 제거된다.
+
+그런데 이 익명 함수는 makeCounter의 실행 컨텍스트가 제거된 이후에도 여전히 count 변수에 접근할 수 있다.
+makeCounter의 실행 컨텍스트가 제거되더라도, makeCounter의 LexicalEnvironment는 유지된다.
+
+왜냐하면 익명 함수가 makeCounter의 LexicalEnvironment에 대한 참조를 유지하고 있기 때문에, count가 가비지컬렉션의 대상이 되지 않기 때문이다.
+
+이처럼 외부 함수의 생명주기가 끝났음에도, 내부 함수가 자신이 생성된 환경(lexical environment)에 대한 참조를 유지하여 외부함수의 변수에 접근할 수 있는 현상을 클로저라고 한다.
+
+## 클로저는 언제 사용될까?
+
+클로저는 주로 다음과 같은 경우에 사용된다.
+
+### 1. 콜백 함수 내부에서 외부 데이터를 사용하고자 할 때
+
+유저별 API 클라이언트를 생성한다고 가정했을 때, 각 클라이언트가 자신의 토큰을 기억하도록 하여 필요한 상황에 재사용할 수 있다.
+
+```js
+function createApiClient(userToken) {
+  // 클로저로 유지되는 외부 데이터: userToken
+  return function (endpoint, callback) {
+    // 비동기 API 호출 시뮬레이션
+    setTimeout(() => {
+      const response = {
+        endpoint,
+        token: userToken, // 클로저로 유지된 토큰 사용
+        data: `Data from ${endpoint}`,
+      };
+      callback(response);
+    }, 1000);
+  };
+}
+
+// 콜백 함수: API 응답 처리
+function handleApiResponse(response) {
+  console.log(`API Response: ${response.data} (Token: ${response.token})`);
+}
+
+// 사용자별 API 클라이언트 생성
+const client1 = createApiClient('token-123');
+const client2 = createApiClient('token-456');
+
+// 비동기 요청 시뮬레이션
+client1('/users', handleApiResponse); // 1초 후: API Response: Data from /users (Token: token-123)
+client2('/products', handleApiResponse); // 1초 후: API Response: Data from /products (Token: token-456)
+```
+
+### 2.접근 권한 제어(정보 은닉)
+
+외부에 노출되지 않는 private 변수를 만들고, 이를 조작할 수 있는 메서드만을 제공하여 접근 권한을 제어할 수 있다.
+
+```js
+function createCounter() {
+  let count = 0; // private 변수
+
+  return Object.freeze({
+    increment: function () {
+      count++;
+      return count;
+    },
+    decrement: function () {
+      count--;
+      return count;
+    },
+    get getCount() {
+      return count;
+    },
+  });
+}
+
+const counter = createCounter();
+
+console.log(counter.increment()); // 1
+console.log(counter.increment()); // 2
+console.log(counter.decrement()); // 1
+console.log(counter.getCount); // 1
+console.log(counter.count); // undefined (직접 접근 불가)
+```
+
+### 3. 부분 적용 함수
+
+아래와 같이 partialApply 함수를 정의하고, 필요한 상황에 부분 적용 함수를 선택적으로 사용할 수 있다.
+
+```js
+function partialApply(fn, ...args) {
+  return function (...newArgs) {
+    return fn(...args, ...newArgs);
+  };
+}
+
+function add(a, b, c) {
+  return a + b + c;
+}
+
+const add5 = partialApply(add, 5);
+
+console.log(add5(10, 15)); // 30
+```
+
+아래와 같이 디바운스(debounce) 함수를 정의하여, 이벤트 핸들러를 최적화할 수 있다. <br />
+디바운스는 짧은 시간 동안 동일한 이벤트가 많이 발생한 경우 이를 전부 처리하지 않고 처음 또는 마지막에 발생한 이벤트에 대해 한 번만 처리하는 것으로, 프론트엔드 성능 최적화에 큰 도움을 주는 기능 중 하나이다. <br />
+아래 코드는 `mousewheel` 이벤트가 발생할 때마다 `wheelHandler` 함수를 호출하는 대신, 마지막 이벤트가 발생한 후 2초 동안 추가 이벤트가 없을 때만 `wheelHandler`를 호출한다.
+
+```js
+var debounce = function (eventName, func, wait) {
+  var timeoutId = null;
+  return function (event) {
+    var self = this;
+    console.log(eventName, 'event 발생');
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(func.bind(self, event), wait);
+  };
+};
+
+var wheelHandler = function (event) {
+  console.log('wheel event 처리', event);
+};
+
+document.body.addEventListener(
+  'mousewheel',
+  debounce('wheel', wheelHandler, 2000)
+);
+```
+
+### 4. 커링 함수
+
+커링 함수(curring function)란 여러 개의 인자를 받는 함수를 하나의 인자만 받는 함수로 나눠서 순차적으로 호출될 수 있게 체인 형태로 구성한 것을 말한다. 앞의 부분 적용 함수와 맥락은 일치하지만 커링은 한 번에 하나의 인자만 전달하는 것을 원칙으로 한다.
+
+```js
+function curry(f) {
+  return function (a) {
+    return function (b) {
+      return f(a, b);
+    };
+  };
+}
+
+function sum(a, b) {
+  return a + b;
+}
+
+let curriedSum = curry(sum);
+
+curriedSum(1)(2);
+```
+
+위 예시들 외에도 우리가 자주 사용하는 리액트의 `useState` 내부에서도 클로저가 활용된다. ([참조](https://ttaerrim.tistory.com/67))
+
+## 메모리 누수?
+
+클로저는 강력한 기능이지만, 잘못 사용하면 메모리 누수의 원인이 될 수 있다. 클로저가 외부 변수를 참조하고 있는 동안, 해당 변수는 가비지 컬렉션의 대상이 되지 않기 때문이다. 이로 인해 불필요한 메모리 사용이 발생할 수 있다.
+
+따라서 클로저를 사용할 때는 참조하고 있는 외부 변수를 주의 깊게 관리해야 한다. 필요하지 않은 경우에는 아래와 같이 클로저를 해제하도록 하는 코드를 작성해주는 것이 좋다.
+
+```js
+var outer = (function () {
+  var a = 1;
+  var inner = function () {
+    return ++a;
+  };
+  return inner;
+})();
+console.log(outer()); // 2
+console.log(outer()); // 3
+outer = null; // 클로저 해제
+```
+
+## Reference
+
+- [코어 자바스크립트](https://product.kyobobook.co.kr/detail/S000001766397)
+- [모던 자바스크립트 Deep Dive](https://product.kyobobook.co.kr/detail/S000001766445)
+- [MDN - Closures](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Closures)
+- [JavaScript.info - 커링](https://ko.javascript.info/currying-partials)
+- [useState, 클로저를 활용하여 동작한다고?](https://ttaerrim.tistory.com/67)
