@@ -1,0 +1,311 @@
+---
+title: 자바스크립트 클래스
+date: '2025-08-25'
+tags: ['javascript']
+draft: false
+summary: 클래스 개념 정리
+---
+
+자바스크립트는 프로토타입 기반으로 객체 지향을 지원하는 언어다. ES6(ECMAScript 2015)부터 클래스 문법이 도입되어 객체 지향 프로그래밍을 보다 직관적으로 작성할 수 있게 되었다. 이번 글에서는 자바스크립트 클래스 개념을 정리해보자.
+
+## TLDR;
+
+- ES6부터 도입된 클래스 문법을 통해 자바스크립트에서 객체 지향 프로그래밍을 보다 직관적으로 작성할 수 있다.
+- 클래스는 함수와 마찬가지로 일급 객체이며, 표현식으로 정의할 수 있다.
+- 클래스의 인스턴스 생성은 `new` 키워드를 사용하여 이루어진다.
+- 클래스에서 내부 프로퍼티 정의는 `constructor` 메서드 내부 또는 Public class fields 문법을 사용하여 정의할 수 있다.
+- 클래스에서 private 프로퍼티와 메서드는 `#` 기호를 사용하여 정의할 수 있다.
+- 클래스는 프로토타입 메서드와 정적 메서드를 지원하여, 코드의 재사용성을 높일 수 있다.
+
+## 클래스의 탄생 배경
+
+자바스크립트는 객체 생성과 상속을 위해 주로 생성자 함수와 프로토타입 체인을 사용했다. 그러나 이러한 방식은 다른 객체 지향 언어에 익숙한 개발자들에게는 다소 생소하고 복잡하게 느껴질 수 있었다. 이를 해결하기 위해 ES6에서 클래스 문법이 도입되었다.
+
+클래스 등장 이전에는 상속을 위해 아래와 같이 장황하고 읽기 어려운 코드를 작성해야 했다.
+
+```js
+function Person(name, age) {
+  this.name = name;
+  this.age = age;
+}
+
+// 프로토타입 메서드
+Person.prototype.sayHi = function () {
+  console.log(`Hi, I'm ${this.name}, ${this.age} years old.`);
+};
+
+// 정적 메서드 (Person 자체에 붙음)
+Person.isAdult = function (age) {
+  return age >= 18;
+};
+
+// 상속 예시
+function Student(name, age, major) {
+  Person.call(this, name, age); // 부모 생성자 호출
+  this.major = major;
+}
+
+// 프로토타입 체인 연결
+Student.prototype = Object.create(Person.prototype);
+Student.prototype.constructor = Student;
+
+// Person의 sayHi 메서드를 오버라이드
+Student.prototype.sayHi = function () {
+  console.log(`Hi, I'm ${this.name}, a ${this.major} major student.`);
+};
+
+const p1 = new Person('Alice', 30);
+p1.sayHi(); // Hi, I'm Alice, 30 years old.
+
+const s1 = new Student('Bob', 20, 'Computer Science');
+s1.sayHi(); // Hi, I'm Bob, a Computer Science major student.
+
+console.log(Person.isAdult(15)); // false
+```
+
+위 내용을 클래스로 작성하면 훨씬 간결하고 직관적이 된다.
+클래스를 이용한 예제는 아래 [클래스 사용법](#클래스-사용법)에서 다루도록 하겠다.
+
+## 클래스도 함수다
+
+하지만 클래스를 사용한다고 해서 자바스크립트가 프로토타입 기반이라는 사실이 변하는 것은 아니다. 클래스 문법은 단지 생성자 함수와 프로토타입 체인을 더 쉽게 사용할 수 있도록 하는 문법적 설탕(syntactic sugar)에 불과하다.
+아래 예제에서, `typeof` 연산자를 사용하여 타입을 조회해보면 `function`이 출력된다.
+
+```js
+class Example {
+  constructor(value) {
+    this.value = value;
+  }
+}
+
+console.log(typeof Example); // 'function'
+```
+
+그래서 일반적이지는 않지만 함수와 마찬가지로 표현식으로 클래스를 정의할 수도 있다. 이때 클래스는 함수와 마찬가지로 이름을 가질 수도 있고, 갖지 않을 수도 있다.
+
+```js
+// 익명 클래스 표현식
+const Person = class {};
+// 기명 클래스 표현식
+const Student = class MyClass {};
+
+console.log(Person); // [class Person]
+console.log(Student); // [class MyClass]
+```
+
+클래스를 표현식으로 정의할 수 있다는 것은 클래스가 값으로 사용할 수 있는 **일급 객체**라는 것을 의미한다.
+이전에 [자바스크립트 함수](https://dannydevlog.vercel.app/blog/javascript/function#%EC%9D%BC%EA%B8%89%ED%95%A8%EC%88%98first-class-function)에서 일급 객체에 대해 정리했었으니 짚고 넘어가도록 하자.
+
+## 클래스 사용법
+
+아래 예제는 위 [클래스의 탄생 배경](#클래스의-탄생-배경)에서 생성자 함수로 작성했던 코드를 클래스 문법으로 다시 작성한 것이다.
+
+```js
+class Person {
+  constructor(name, age) {
+    this.name = name;
+    this.age = age;
+  }
+
+  // 프로토타입 메서드(인스턴스 메서드)
+  sayHi() {
+    console.log(`Hi, I'm ${this.name}, ${this.age} years old.`);
+  }
+
+  // 정적 메서드
+  static isAdult(age) {
+    return age >= 18;
+  }
+}
+
+class Student extends Person {
+  constructor(name, age, major) {
+    super(name, age); // 부모 constructor 호출
+    this.major = major;
+  }
+
+  // Person의 sayHi 메서드를 오버라이드
+  sayHi() {
+    console.log(`Hi, I'm ${this.name}, a ${this.major} major student.`);
+  }
+}
+
+const p1 = new Person('Alice', 30);
+p1.sayHi(); // Hi, I'm Alice, 30 years old.
+
+const s1 = new Student('Bob', 20, 'Computer Science');
+s1.sayHi(); // Hi, I'm Bob, a Computer Science major student.
+
+console.log(Person.isAdult(15)); // false
+```
+
+### 1. 인스턴스 생성
+
+클래스의 인스턴스는 `new` 키워드를 사용하여 생성할 수 있다. `new` 키워드를 사용하면 `constructor` 메서드가 호출되어 새로운 객체가 생성된다.
+
+- `constructor`는 인스턴스를 생성하고 초기화하기 위한 특수한 메서드다. 이름을 변경할 수 없다.
+- 만약 `new` 키워드 없이 클래스를 호출하면 에러가 발생한다.
+
+```js
+const p1 = new Person('Alice', 30);
+const s1 = new Student('Bob', 20, 'Computer Science');
+const e1 = Student(); // TypeError: Class constructor cannot be invoked without 'new'
+```
+
+### 2. 내부 프로퍼티 정의
+
+이전에는 반드시 `constructor` 내부에서 프로퍼티를 정의해야 했다. 그런데 ES2022에서 Public class fields 문법이 표준으로 확정되면서, constructor 없이도 클래스 몸체에서 바로 프로퍼티를 정의할 수 있게 되었다.
+
+```js
+// 이전
+class Person {
+  constructor(name, age) {
+    this.name = name;
+    this.age = age;
+  }
+}
+
+// ES2022 이후
+class Person {
+  name = 'Anonymous'; // 인스턴스 프로퍼티
+  age = 0;
+
+  sayHi() {
+    console.log(`Hi, I'm ${this.name}, ${this.age} years old`);
+  }
+}
+
+const p = new Person();
+console.log(p.name); // "Anonymous"
+console.log(p.age); // 0
+p.sayHi(); // Hi, I'm Anonymous, 0 years old
+```
+
+그런데 class가 처음 도입된 ES6에서는 private 필드를 정의하기 위한 문법이 없었다. 모든 필드는 기본적으로 public이었기 때문에, 관습적으로 private을 의미하는 언더스코어(\_)를 접두사로 붙여서 사용했었다. 이후 ES2022에서 private 필드를 정의할 수 있는 문법이 추가되었다.
+
+```js
+class Person {
+  #name; // private field
+
+  constructor(name) {
+    this.#name = name;
+  }
+
+  getName() {
+    return this.#name;
+  }
+}
+
+const p = new Person('Moon');
+console.log(p.getName()); // Moon
+console.log(p.#name); // SyntaxError: Private name #name is not defined.
+```
+
+### 3. 프로토타입 메서드(인스턴스 메서드) 정의
+
+클래스에서 constructor 밖에 정의된 메서드는 모든 인스턴스가 공유하는 함수로, 내부적으로 프로토타입 객체(`ClassName.prototype`)에 저장된다.
+즉, 인스턴스마다 메서드를 새로 만들지 않고 하나를 공유하기 때문에 메모리를 절감할 수 있다.
+
+```js
+class Person {
+  constructor(name, age) {
+    this.name = name;
+    this.age = age;
+  }
+
+  // 프로토타입 메서드(인스턴스 메서드)
+  sayHi() {
+    console.log(`Hi, I'm ${this.name}, ${this.age} years old.`);
+  }
+}
+
+const p1 = new Person('Alice', 30);
+const p2 = new Person('Bob', 25);
+p1.sayHi(); // Hi, I'm Alice, 30 years old.
+p2.sayHi(); // Hi, I'm Bob, 25 years old.
+
+console.log(p1.sayHi === p2.sayHi); // true
+```
+
+### 4. 정적 메서드 정의
+
+정적 메서드는 클래스 자체에 속하는 메서드로, 인스턴스가 아닌 클래스 이름으로 호출한다. 정적 메서드는 `static` 키워드를 사용하여 정의한다.
+주로 유틸리티 함수를 정의할 때 사용된다.
+
+개발할 때 자주 사용하는 `Math.floor`, `Object.assign`, `Array.isArray` 등도 모두 정적 메서드들이다.
+
+```js
+class MathUtils {
+  static add(x, y) {
+    return x + y;
+  }
+
+  static multiply(x, y) {
+    return x * y;
+  }
+}
+
+console.log(MathUtils.add(2, 3)); // 5
+console.log(MathUtils.multiply(2, 3)); // 6
+
+const m = new MathUtils();
+// 정적 메서드는 아래와 같이 접근할 수 없다.
+console.log(m.add(2, 3)); // TypeError: m.add is not a function
+```
+
+### 5. 상속
+
+클래스는 `extends` 키워드를 사용하여 다른 클래스를 상속할 수 있다. 서브 클래스(자식 클래스)는 슈퍼 클래스(부모 클래스)의 모든 프로퍼티와 메서드를 상속받는다.
+
+```js
+class Animal {
+  speak() {
+    console.log('동물이 소리를 냅니다.');
+  }
+}
+
+class Dog extends Animal {
+  speak2() {
+    console.log('멍멍!');
+  }
+}
+
+const d = new Dog();
+d.speak(); // 동물이 소리를 냅니다.
+d.speak2(); // 멍멍!
+```
+
+위 예제에서는 `constructor`와 `super`를 생략했지만, 만약 서브 클래스에서 `constructor`를 정의한다면 (또는 서브 클래스에서 추가적인 프로퍼티 초기화 작업을 수행한다면) 반드시 `super`를 호출해야 한다. `super`는 부모 클래스의 `constructor`를 호출하는 역할을 한다.
+
+```js
+class Animal {
+  constructor(name) {
+    this.name = name;
+  }
+
+  speak() {
+    console.log(`${this.name}가 소리를 냅니다.`);
+  }
+}
+
+class Dog extends Animal {
+  constructor(name, breed) {
+    super(name);
+    this.breed = breed;
+  }
+
+  speak2() {
+    console.log(`${this.name}(${this.breed})가 멍멍! 하고 짖습니다.`);
+  }
+}
+
+const d = new Dog('바둑이', '진돗개');
+d.speak(); // 바둑이가 소리를 냅니다.
+d.speak2(); // 바둑이(진돗개)가 멍멍! 하고 짖습니다.
+```
+
+## Reference
+
+- [코어 자바스크립트](https://product.kyobobook.co.kr/detail/S000001766397)
+- [모던 자바스크립트 Deep Dive](https://product.kyobobook.co.kr/detail/S000001766445)
+- [MDN - Classes](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes)
