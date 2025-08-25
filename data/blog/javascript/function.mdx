@@ -1,6 +1,7 @@
 ---
 title: 자바스크립트 함수
 date: '2025-08-20'
+lastmod: '2024-08-25'
 tags: ['javascript']
 draft: false
 summary: 함수, 순수함수, 고차함수, 일급함수 개념 정리
@@ -153,6 +154,7 @@ JavaScript에서 함수는 **일급 객체**로 취급된다. <br />
 일급 객체란 무엇일까?
 일급 객체는 프로그래밍 언어에서 값으로 다룰 수 있는 모든 것을 말한다.
 
+- **무명의 리터럴로 생성 가능**: 함수를 이름 없이 정의할 수 있다.
 - **변수에 할당 가능**: 함수를 변수나 자료구조(객체, 배열)에 할당할 수 있다.
 - **인자로 전달 가능**: 함수를 다른 함수의 인자로 전달할 수 있다.
 - **반환값으로 사용 가능**: 함수를 다른 함수의 반환값으로 사용할 수 있다.
@@ -160,10 +162,15 @@ JavaScript에서 함수는 **일급 객체**로 취급된다. <br />
 숫자, 문자열, 배열, 객체, 함수 등이 모두 위 조건을 충족하므로 일급 객체라고 할 수 있다.
 
 ```js
-const greet = (name) => `Hello, ${name}`; // 1. 변수에 할당 가능
+// 1. 무명의 리터럴로 생성 가능
+const noName = function (name) {
+  return `Hello, ${name}`;
+};
+
+const greet = (name) => `Hello, ${name}`; // 2. 변수에 할당 가능
 function execute(fn, value) {
-  // 2. 인자로 전달 가능
-  return fn(value); // 3. 반환값으로 사용 가능
+  // 3. 인자로 전달 가능
+  return fn(value); // 4. 반환값으로 사용 가능
 }
 console.log(execute(greet, 'Alice')); // Hello, Alice
 ```
