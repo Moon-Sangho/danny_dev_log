@@ -1,6 +1,7 @@
 ---
 title: 자바스크립트 클래스
 date: '2025-08-25'
+lastmod: '2024-08-26'
 tags: ['javascript']
 draft: false
 summary: 클래스 개념 정리
@@ -107,7 +108,7 @@ class Person {
     this.age = age;
   }
 
-  // 프로토타입 메서드(인스턴스 메서드)
+  // 프로토타입 메서드
   sayHi() {
     console.log(`Hi, I'm ${this.name}, ${this.age} years old.`);
   }
@@ -201,7 +202,7 @@ console.log(p.getName()); // Moon
 console.log(p.#name); // SyntaxError: Private name #name is not defined.
 ```
 
-### 3. 프로토타입 메서드(인스턴스 메서드) 정의
+### 3. 프로토타입 메서드 정의
 
 클래스에서 constructor 밖에 정의된 메서드는 모든 인스턴스가 공유하는 함수로, 내부적으로 프로토타입 객체(`ClassName.prototype`)에 저장된다.
 즉, 인스턴스마다 메서드를 새로 만들지 않고 하나를 공유하기 때문에 메모리를 절감할 수 있다.
@@ -213,7 +214,7 @@ class Person {
     this.age = age;
   }
 
-  // 프로토타입 메서드(인스턴스 메서드)
+  // 프로토타입 메서드
   sayHi() {
     console.log(`Hi, I'm ${this.name}, ${this.age} years old.`);
   }
