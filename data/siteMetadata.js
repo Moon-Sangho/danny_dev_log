@@ -8,7 +8,7 @@ const siteMetadata = {
   theme: 'system', // system, dark or light
   siteUrl: 'https://dannydevlog.vercel.app',
   siteRepo: 'https://github.com/Moon-Sangho/danny_dev_log',
-  siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.png`,
+  siteLogo: `${process.env.BASE_PATH || ''}/static/images/logo.webp`,
   socialBanner: `${process.env.BASE_PATH || ''}/static/images/og-image.webp`,
   email: 'dev.danny.moon@gmail.com',
   github: 'https://github.com/Moon-Sangho',
