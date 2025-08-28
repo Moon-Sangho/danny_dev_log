@@ -3,7 +3,6 @@ const headerNavLinks = [
   { href: '/blog', title: 'Blog' },
   // 추후 활성화 예정
   // { href: '/projects', title: 'Projects' },
-  { href: '/about', title: 'About' },
 ];
 
 export default headerNavLinks;
