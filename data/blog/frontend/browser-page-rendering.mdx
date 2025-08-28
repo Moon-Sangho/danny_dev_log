@@ -1,0 +1,238 @@
+---
+title: 브라우저의 페이지 렌더링 과정과 최적화
+date: '2025-08-28'
+tags: ['frontend']
+draft: false
+summary: 브라우저의 페이지 렌더링 과정을 렌더링 관점에서 알아보고 최적화 방법에 대해 정리
+---
+
+웹 페이지를 로드할 때 브라우저는 HTML, CSS, JavaScript 파일을 다운로드하고 이를 해석하여 화면에 표시한다. 이 과정은 여러 단계로 이루어져 있으며, 각 단계에서 최적화를 통해 페이지 로딩 속도와 사용자 경험을 향상시킬 수 있다. 이번 글에서는 브라우저의 페이지 렌더링 과정을 렌더링 관점에서 알아보고 최적화 방법에 대해 정리해보자.
+
+## TLDR;
+
+- 브라우저는 HTML, CSS, JavaScript 파일을 받아 여러 단계를 거쳐 화면에 페이지를 렌더링한다.
+- 렌더링 과정에는 DOM, CSSOM, 렌더 트리 생성, 레이아웃, 페인팅, 합성 등의 단계가 있다.
+- 렌더링 차단 리소스와 파서 차단 리소스는 페이지 로딩 성능에 영향을 미친다.
+- Reflow와 Repaint를 최소화하는 CSS/JS 작성이 렌더링 성능에 큰 영향을 미친다.
+- `async`, `defer`, 코드 스플리팅, 번들링, preload 등 다양한 최적화 기법을 활용하면 페이지 로딩 속도와 사용자 경험을 개선할 수 있다.
+
+## 브라우저의 구성 요소
+
+브라우저의 구성 요소들은 다음 그림과 같으며, 이 글에서는 **렌더링 엔진**에서 일어나는 일을 중점적으로 다룬다.
+
+렌더링 엔진은 요청한 콘텐츠를 표시하는 역할을 담당한다. 예를 들어 HTML을 요청하면 HTML과 CSS를 파싱하여 화면에 표시한다. (다른 구성 요소들의 역할은 [Naver D2 글](https://d2.naver.com/helloworld/59361) 참조)
+
+<div className="flex justify-center">
+  <Image
+    alt="browser-components"
+    src="/static/images/browser-components.webp"
+    width={500}
+    height={500}
+  />
+</div>
+
+## 브라우저에서 페이지 요청이 발생했을 때
+
+우리가 브라우저 주소 입력창에 `www.naver.com` URL을 입력하면, 브라우저는 서버에 HTTP 요청을 보내고, 서버는 요청에 대한 응답으로 CSS와 JavaScript 파일을 참조하는 HTML을 반환한다.  
+이때 브라우저는 받은 HTML 파일을 파싱하여 DOM 트리를 구성하고, CSS 파일을 파싱하여 CSSOM 트리를 구성한다. 이후 이 두 트리를 결합하여 렌더 트리를 생성하고, 최종적으로 화면에 표시하기 위한 레이아웃과 페인팅 과정을 거친다.
+
+<div className="flex justify-center">
+  <Image
+    alt="critical-rendering-path"
+    src="/static/images/critical-rendering-path.webp"
+    width={400}
+    height={500}
+  />
+</div>
+
+위 그림과 같이 웹페이지가 브라우저에서 렌더링을 시작할 때까지의 단계를 **Critical Rendering Path**라고 한다.
+단계별로 조금 더 자세히 살펴보자.
+
+1. HTML에서 문서 객체 모델 (DOM)을 구성한다.
+
+   - HTML 파일 파싱 도중 `<link href="style.css" rel="stylesheet" />` 태그나 내부 스타일 시트 등을 만나면 CSS 파서가 CSS 객체 모델 (CSSOM)을 구성한다.
+
+2. DOM 또는 CSSOM을 변경하는 JavaScript를 적용한다.
+3. DOM 및 CSSOM에서 렌더트리를 구성한다.
+4. 페이지에서 스타일 및 레이아웃 작업을 실행하여 어떤 요소가 브라우저 화면의 어디에 적합한지 확인한다.
+   - css 속성 중 width, height, display 등
+5. 메모리에 있는 요소의 픽셀을 페인트한다.
+   - css 속성 중 color, background-color, visibility 등
+6. 겹치는 픽셀이 있으면 픽셀을 합성한다.
+   - css 속성 중 transform, filter 등
+7. 결과로 나온 모든 픽셀을 화면에 실제로 브라우저 화면에 그린다.
+
+## 렌더링 차단 리소스와 파서 차단 리소스
+
+### 1. 렌더링 차단 리소스
+
+**렌더링 차단 리소스**란 페이지의 렌더링을 차단하는 리소스를 의미한다. 일부 리소스는 매우 중요하다고 간주되어 브라우저가 이를 처리할 때까지 페이지 렌더링을 일시중지한다. 대표적으로 CSS 파일이 이에 해당한다. CSS 파일은 DOM 트리와 CSSOM 트리를 결합하여 렌더트리를 구성하는 데 필요하므로, CSS 파일이 로드되고 파싱되기 전까지는 렌더링이 진행되지 않는다.
+
+다만 리소스가 렌더링을 차단한다고 해서 브라우저가 다른 작업을 중지하는 것은 아니다. 브라우저는 최대한 효율적으로 작동하려고 하므로 CSS 리소스를 다운로드해야 한다고 판단되면 이를 요청하고 렌더링을 일시중지하지만 나머지 HTML은 계속 처리하고 그동안 할 다른 작업을 찾는다.
+예를 들어 아래와 같은 작업들을 병렬로 진행할 수 있다.
+
+1. HTML 파싱 계속 진행
+
+   - CSS 로딩과는 별개로 DOM 트리 생성을 멈추지 않고 진행
+   - 즉 `<body>, <div>, <p>` 같은 나머지 태그들은 계속 읽어서 DOM을 쌓아감.
+
+2. 리소스 요청
+
+   - `<img>, <script src="...">, <iframe>` 등 다른 리소스가 나오면 네트워크 요청을 미리 보냄.
+
+3. 스크립트 다운로드
+
+   - `defer` 스크립트는 HTML 파싱 도중 다운받고, DOM 파싱이 끝나면 실행.
+   - `async` 스크립트는 HTML 파싱 도중 다운받고, 다운되자마자 실행.
+
+### 2. 파서 차단 리소스
+
+**파서 차단 리소스**는 HTML 파서를 차단하는 리소스를 의미한다. 대표적으로 `<script>` 태그가 이에 해당한다. 스크립트가 로드되고 실행되기 전까지는 HTML 문서의 파싱이 중단된다. JavaScript는 실행 시 DOM 또는 CSSOM을 변경할 수 있으므로, 브라우저는 스크립트가 완전히 로드되고 실행될 때까지 HTML 문서의 구조를 결정할 수 없기 때문이다.
+
+파서 차단 리소스는 사실상 렌더링 차단 리소스이기도 하다. 파서는 완전히 처리될 때까지 파싱을 차단하는 리소스를 지나갈 수 없으므로 그 이후의 콘텐츠에 액세스하고 렌더링할 수 없다.
+
+그래서 파서를 차단하면 렌더링을 차단하는 것보다 훨씬 더 큰 성능 비용이 발생할 수 있다. 따라서 브라우저는 기본 HTML 파서가 차단된 동안 [Preload scanner](https://web.dev/articles/preload-scanner?hl=ko)라는 보조 HTML 파서를 사용하여 향후 리소스를 다운로드하여 이 비용을 줄이려는 노력을 한다.
+
+## 최적화 기법
+
+### CSS 최적화
+
+1. `rel="preload"`를 사용하여 **중요한 리소스를 사전 로드**한다.
+   이렇게 하면 브라우저에게 href 속성으로 지정한 리소스를 로드 순서대로 기다리지 않고 우선순위로 즉시 다운로드 및 캐싱하도록 설정할 수 있다.
+
+   ```html
+   <!DOCTYPE html>
+   <html lang="ko">
+     <head>
+       <meta charset="utf-8" />
+       <title>rel=preload 예제 소스</title>
+       <!-- 웹폰트 파일을 사전 로드하여 페이지 로딩 성능을 최적화 -->
+       <link
+         rel="preload"
+         href="font.woff2"
+         as="font"
+         type="font/woff2"
+         crossorigin="anonymous"
+       />
+       <!-- 웹폰트 스타일이 포함된 스타일시트 연결 -->
+       <link rel="stylesheet" href="webfont.css" />
+     </head>
+     <body>
+       <!-- 미리 로드된 웹폰트를 텍스트에 바로 적용 -->
+       <h1>rel=preload 예제 소스</h1>
+       <!-- 추가 콘텐츠 -->
+     </body>
+   </html>
+   ```
+
+2. 필요에 따라 **내부 스타일 시트를 활용**한다.
+
+   ```html
+   <head>
+     <style>
+       /* Above-the-fold 스타일만 인라인 */
+       /* Above-the-fold 스타일은 페이지 상단에 보이는 부분에 해당하는 스타일로, 페이지 로딩 시 가장 먼저 적용되어야 하는 스타일을 의미한다. */
+       h1 {
+         font-size: 2em;
+         color: #333;
+       }
+     </style>
+     <!-- Below-the-fold 스타일은 외부 스타일시트로 분리 -->
+     <!-- Below-the-fold 스타일은 페이지 하단에 보이는 부분에 해당하는 스타일로, 페이지 로딩 시 즉시 적용되지 않아도 되는 스타일을 의미한다. -->
+     <link rel="stylesheet" href="styles.css" />
+   </head>
+   <body>
+     <h1>Hello, World!</h1>
+   </body>
+   ```
+
+3. **간결한 CSS 선택자를 사용**한다. 복잡한 선택자는 브라우저가 스타일을 적용하는 데 더 많은 시간을 소비하게 한다. 예를 들어, `div > p.intro`보다는 `.intro`와 같은 간단한 선택자를 사용하는 것이 좋다.
+
+   ```html
+   <!-- 최적화 전 -->
+   <style>
+     div > p.intro {
+       color: blue;
+     }
+   </style>
+
+   <!-- 최적화 후 -->
+   <style>
+     .intro {
+       color: blue;
+     }
+   </style>
+   ```
+
+4. **Reflow를 일으키는 CSS 속성을 최소화**한다.
+
+   우리는 자바스크립트로 DOM에 접근하여 특정 요소의 `width`, `height`, `margin`, `padding`, `color`, `background-color` 등의 스타일 속성에 변경을 가할 수 있다.
+
+   이 때 Reflow, Repaint라는 현상이 발생한다.
+   간단히 말해서, Critical Rendering Path에서 Layout과 Paint 단계가 다시 진행되는 것이다. Reflow가 발생한다는 것은 브라우저가 Layout부터 Paint 단계까지 다시 진행해야 하므로, 페이지 성능에 큰 영향을 미칠 수 있다. Repaint는 말 그대로 Paint 단계만 다시 실행하여 Reflow보다 성능에 미치는 영향이 적지만, 빈번한 Repaint는 여전히 성능 저하를 초래할 수 있다.
+
+   따라서 가능하면 `width`, `height`, `display:hidden` 으로 요소에 변경을 가하기보다는 `transform`이나 `opacity, `visibility: hidden`과 같은 속성을 사용하여 Reflow가 최소화되도록 하는 것이 좋다.
+
+### JavaScript 최적화
+
+1. `async`, `defer`를 이용하여 스크립트 로딩을 최적화한다.
+
+   - `async` 속성을 사용하면 스크립트가 다운로드되는 동안 HTML 파싱이 계속
+     진행된다. 다운로드가 완료되면 즉시 실행된다.
+   - `defer` 속성을 사용하면 HTML 파싱이 완료된 후 스크립트가 실행된다.
+
+     ```html
+     <body>
+       <div>Hello</div>
+       <script src="script.js" async></script>
+       <script src="script2.js" defer></script>
+     </body>
+     ```
+
+2. 필요에 따라 **코드 스플리팅**을 활용한다.
+
+   - 코드 스플리팅은 애플리케이션의 코드를 여러 개의 청크로 나누어 필요한 시점에만 로드하는 기법이다.
+   - 이를 통해 초기 로딩 시간을 단축하고, 사용자가 실제로 필요로 하는 코드만 로드할 수 있다.
+
+     ```javascript
+     // 예시: 동적 import를 사용한 코드 스플리팅
+     button.addEventListener('click', () => {
+       import('./module.js').then((module) => {
+         module.doSomething();
+       });
+     });
+     ```
+
+3. Webpack이나 Parcel과 같은 **번들러 도구를 활용**하여 JS파일을 하나로 병합하고 네트워크 요청 수를 줄인다.
+
+   ```html
+   <!-- 최적화 전 -->
+   <body>
+     <script src="util.js"></script>
+     <script src="main.js"></script>
+     <script src="library.js"></script>
+   </body>
+
+   <!-- 최적화 후 -->
+   <body>
+     <script src="bundle.js"></script>
+   </body>
+   ```
+
+이 외에도 Critical Rendering Path를 위한 많은 최적화 기법들이 있으며, 상황에 맞게 적절한 방법을 선택하여 적용하는 것이 중요하다.
+
+아래 Reference에 더 많은 자료가 있으니 참고하길 바란다.
+
+### Reference
+
+- [MDN - 웹페이지를 표시한다는 것: 브라우저는 어떻게 동작하는가](https://developer.mozilla.org/ko/docs/Web/Performance/Guides/How_browsers_work)
+- [MDN - Critical rendering path](https://developer.mozilla.org/en-US/docs/Web/Performance/Guides/Critical_rendering_path)
+- [web.dev - 브라우저의 작동 방식](https://web.dev/articles/howbrowserswork?hl=ko)
+- [web.dev - Understand the critical path](https://web.dev/learn/performance/understanding-the-critical-path?hl=ko)
+- [web.dev - Don't fight the browser preload scanner](https://web.dev/articles/preload-scanner)
+- [TOAST UI - 성능 최적화](https://ui.toast.com/fe-guide/ko_PERFORMANCE)
+- [Naver D2 - 브라우저는 어떻게 동작하는가?](https://d2.naver.com/helloworld/59361)
+- [Naver D2 - 웹 성능 최적화에 필요한 브라우저의 모든 것](https://www.slideshare.net/slideshow/125-119068291/119068291)
+- [What are Reflow and Repaint? How to optimize?](https://www.explainthis.io/en/swe/repaint-and-reflow)
+- [모던 CSS 적용 방법 둘러보기(CSS-in-JS with zero-runtime)](https://pozafly.github.io/css/explore-how-to-apply-modern-css/#CRP-Critical-Rendering-Path)
+- [what-happens-when](https://github.com/alex/what-happens-when)
