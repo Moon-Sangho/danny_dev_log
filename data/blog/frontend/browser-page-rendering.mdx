@@ -178,8 +178,8 @@ summary: 브라우저의 페이지 렌더링 과정을 렌더링 관점에서 �
 1. `async`, `defer`를 이용하여 스크립트 로딩을 최적화한다.
 
    - `async` 속성을 사용하면 스크립트가 다운로드되는 동안 HTML 파싱이 계속
-     진행된다. 다운로드가 완료되면 즉시 실행된다.
-   - `defer` 속성을 사용하면 HTML 파싱이 완료된 후 스크립트가 실행된다.
+     진행된다. 다운로드가 완료되면 즉시 실행된다. 스크립트가 DOM에 의존하지 않는 유저 트래킹 툴이나 분석 도구의 경우에 사용할 수 있다.
+   - `defer` 속성을 사용하면 HTML 파싱이 완료된 후 스크립트가 실행된다. 스크립트가 DOM에 의존하는 경우 사용할 수 있다.
 
      ```html
      <body>
@@ -234,5 +234,6 @@ summary: 브라우저의 페이지 렌더링 과정을 렌더링 관점에서 �
 - [Naver D2 - 브라우저는 어떻게 동작하는가?](https://d2.naver.com/helloworld/59361)
 - [Naver D2 - 웹 성능 최적화에 필요한 브라우저의 모든 것](https://www.slideshare.net/slideshow/125-119068291/119068291)
 - [What are Reflow and Repaint? How to optimize?](https://www.explainthis.io/en/swe/repaint-and-reflow)
+- [스크립트의 실행 시점을 조절하는 Async와 Defer 속성](https://wormwlrm.github.io/2021/03/01/Async-Defer-Attributes-of-Script-Tag.html)
 - [모던 CSS 적용 방법 둘러보기(CSS-in-JS with zero-runtime)](https://pozafly.github.io/css/explore-how-to-apply-modern-css/#CRP-Critical-Rendering-Path)
 - [what-happens-when](https://github.com/alex/what-happens-when)
