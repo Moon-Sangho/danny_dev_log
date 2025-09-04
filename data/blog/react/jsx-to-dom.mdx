@@ -1,0 +1,191 @@
+---
+title: JSX 코드가 브라우저의 DOM을 생성하기까지
+date: '2025-09-04'
+tags: ['react']
+draft: false
+summary: React의 문법인 JSX의 개념과 JSX로 작성된 코드가 어떻게 브라우저의 DOM을 생성하는지 알아보기
+---
+
+리액트를 처음 배우면 가장 낯설게 다가오는 것이 바로 **JSX (JavaScript XML)** 문법이다.
+겉보기엔 HTML을 쓰는 것 같지만, 사실은 자바스크립트 코드로 변환되는 일종의 "문법적 설탕(Syntactic Sugar)”이다.
+
+## TLDR;
+
+- JSX란 JavaScript XML의 약자로, JavaScript 코드 안에 HTML과 유사한 문법을 사용할 수 있게 해주는 문법이다.
+- JSX가 탄생하게 된 배경은 직관적인 코드 작성과 협업, 유지보수성 향상을 위해서였다.
+- JSX는 React에서 UI와 비즈니스 로직을 정의하는 데 사용되며, Babel을 통해 컴파일되고 최종적으로는 JavaScript 객체로 변환되어 DOM에 렌더링된다.
+- React 17부터는 JSX 작성 과정에서 `import React from 'react'` 구문을 생략할 수 있게 되었다.
+
+## JSX란?
+
+JSX는 페이스북에서 개발한 JavaScript를 확장한 문법으로, JavaScript 코드 안에 HTML과 유사한 마크업을 작성할 수 있게 해준다.
+React에서 주로 사용되며, JSX 없이도 React를 사용할 수 있지만, JSX를 사용하면 코드가 더 간결하고 가독성이 높아진다.
+
+```jsx
+const Example = () => {
+  return (
+    <div>
+      <h1>Hello, JSX!</h1>
+      <p>This is a simple example of JSX syntax.</p>
+    </div>
+  );
+};
+```
+
+## 왜 굳이 JSX 문법을?
+
+페이스북에서는 왜 굳이 JSX라는 문법을 만들게 되었을까? <br />
+React가 등장하기 전, 그리고 JSX가 도입되기 전의 UI 개발 방식에는 다음과 같은 문제점이 있었다.
+
+#### 1. 복잡한 DOM 조작
+
+전통적인 JavaScript로 UI를 만들 때는 [document.createElement](https://developer.mozilla.org/en-US/docs/Web/API/Document/createElement)나 jQuery 같은 라이브러리를 사용해 DOM을 직접 조작했다. 이는 코드가 장황하고, UI 구조를 직관적으로 파악하기 어려웠으며, 상태 변화에 따라 DOM을 수동으로 업데이트해야 했었다.
+
+```js
+const div = document.createElement('div');
+div.className = 'container';
+const h1 = document.createElement('h1');
+h1.textContent = 'Hello, World!';
+div.appendChild(h1);
+document.body.appendChild(div);
+```
+
+#### 2. React 초기의 [React.createElement](https://react.dev/reference/react/createElement) 방식
+
+React가 처음 도입되었을 때, JSX 없이 `React.createElement`를 사용해 UI를 작성했다. 하지만 이 방식은 코드가 길어지고 중첩된 구조에서는 가독성이 급격히 떨어지는 문제가 있었다.
+UI 구조를 한눈에 파악하기 힘들다 보니 유지보수성도 저하되었다.
+
+```js
+React.createElement(
+  'div',
+  { className: 'container' },
+  React.createElement('h1', null, 'Hello, World!'),
+  React.createElement('p', null, 'Welcome to React')
+);
+```
+
+이에 직관적이고 선언적인 UI 작성, 그리고 UI를 컨트롤하는 JavaScript와의 매끄러운 결합이 필요했다. JSX는 이러한 요구를 충족시키기 위해 도입되었다.
+
+```jsx:jsx
+const Button = () => {
+ const [isClicked, setClicked] = useState(false);
+ const handleClick = () => {
+	 setClicked((prev) => !prev);
+ };
+
+ return <button onClick={handleClick}>{isClicked ? 'Clicked!' : 'Click Me'}</button>;
+};
+```
+
+위와 같은 JSX를 도입함으로써 다음과 같은 이점들을 가질 수 있게 되었다.
+
+- HTML-like 문법으로 **가독성과 직관성**을 높였다.
+- JavaScript와의 통합으로 **동적 UI**를 쉽게 구현할 수 있게 되었다.
+- 컴포넌트 기반 개발을 강화하여 **재사용성과 유지보수성을 개선**했다.
+- React의 선언적 철학을 구현하며 **생산성**을 높였다.
+
+## JSX로 작성된 코드가 어떻게 브라우저의 DOM으로 변환되는 것일까?
+
+브라우저는 JSX를 이해할 수 없다. 따라서 JSX는 브라우저가 이해할 수 있는 자바스크립트 코드로 변환되어야 한다.
+이 과정에서 [Babel](https://babeljs.io/)이라는 컴파일러가 React Element로 변환, 이후 최종적으로 DOM이 생성된다. 이 과정을 자세히 살펴보자.
+
+> DOM이란 Document Object Model의 약자로, 브라우저가 HTML/XML 문서를 파싱해서 생성하는 트리 구조의 객체 모델이다. 이를 통해 JavaScript는 문서의 요소들을 조회, 변경, 추가, 삭제할 수 있다.
+
+### 1. 브라우저는 왜 JSX를 이해할 수 없나?
+
+브라우저에서 자바스크립트는 ECMAScript 표준 문법으로 작성된 코드만 이해할 수 있는데, JSX는 ECMAScript 표준이 아니다.
+
+> ECMAScript란 자바스크립트의 표준 사양으로, 자바스크립트의 문법과 기능을 정의한다.
+
+```jsx
+<button onClick={() => alert('Hello!')}>Click</button>
+```
+
+위와 같은 JSX 코드는 자바스크립트 문법 규칙에 포함되지 않는다.
+따라서 JSX를 그대로 브라우저에 전달하면 SyntaxError가 발생한다.
+
+![JSX SyntaxError](/static/images/jsx-in-browser.webp)
+
+그래서 이를 브라우저가 이해할 수 있는 자바스크립트 코드로 변환하는 과정이 필요한데, 이 과정에서 주로 Babel이라는 컴파일러가 사용된다.
+
+자바스크립트 컴파일러는 Babel 뿐만이 아니라 swc, esbuild 등 다른 도구들도 많은데, 이에 대한 비교내용은 추후 다른 글에서 다루도록 하겠다.
+
+### 2. JSX에서 DOM이 생성되기까지
+
+Babel의 JSX 변환은 빌드 타임에 이루어진다.
+예를 들어, 우리가 다음과 같은 JSX를 작성하면,
+
+```jsx
+import React from 'react';
+
+const element = <h1 className="title">Hello, JSX!</h1>;
+```
+
+Babel은 다음과 같은 과정을 거쳐 JSX를 React Element로 변환한다.
+
+#### 1. 파싱(Parsing)
+
+JSX 코드를 파싱하여 **추상 구문 트리(AST, Abstract Syntax Tree)** 로 변환한다. 이 과정에서 JSX의 구조(태그, 속성, 자식 요소 등)를 분석한다.
+
+- AST로 변환하는 이유는, 간단히 말하면 코드는 그냥 문자열이기 때문에 Babel, ESLint, TypeScript와 같은 도구들이 좀 더 이해하기 쉬운 트리구조로 변환하기 위함이다.
+- [AST Explorer](https://astexplorer.net/)에서 JSX가 어떻게 변환되는지 직접 확인할 수 있다.
+
+#### 2. 트랜스폼(Transform)
+
+Babel은 JSX를 다음과 같은 코드로 변환한다.
+
+```js
+const element = React.createElement(
+  'h1',
+  { className: 'title' },
+  'Hello, JSX!'
+);
+```
+
+#### 3. React Element 생성
+
+`React.createElement` 함수는 React Element 객체를 생성한다. 이 객체는 가상 DOM(Virtual DOM)의 일부로, 실제 DOM에 렌더링되기 전의 중간 표현이다.
+
+```js
+{
+	type: 'h1',
+	props: {
+		className: 'title',
+		children: 'Hello, JSX!'
+	},
+	key: null,
+	ref: null
+}
+```
+
+#### 4. React의 렌더링
+
+React는 이 React Element들을 받아 Virtual DOM을 생성하고 실제 DOM에 적용한다.
+이후 상태(state)값이 변경되면 Virtual DOM과 실제 DOM을 비교(diffing)하여 필요한 변경사항만 실제 DOM에 적용한다. 이 과정은 런타임에 `ReactDOM.render` 또는 `ReactDOM.createRoot`를 통해 이루어진다. React의 렌더링에 대한 자세한 내용은 다른 글에서 다루도록 하겠다.
+
+- **Virtual DOM**이란 실제 DOM의 가벼운 복사본으로, React가 UI를 효율적으로 업데이트하기 위해 사용하는 개념이다. Virtual DOM은 메모리 상에 존재하며, 실제 DOM과의 차이를 계산하여 최소한의 변경만을 실제 DOM에 반영한다.
+
+## React v17에서의 업데이트
+
+[React 17](https://legacy.reactjs.org/blog/2020/10/20/react-v17.html)에서 `React.createElement`가 legacy 처리되고, 새로운 컴파일 방식이 도입되었다.
+아래와 같이 [Babel](https://babeljs.io/repl/#?config_lz=N4IgZglgNgpgdgQwLYxALhAJxgBygOgCsBnADxABoQdtiYAXY9AbWaxgQGN7LRMBXOPQgp0IBP3oB7JAmGcQAXwC6yqsSn9MnGABUAnjlQYkUgCb9YSoA&code_lz=GYVwdgxgLglg9mABACQKYBt1wBQEpEDeAUIogE6pQhlIA8AJjAG4B8amciA7nGevQEJaAekasA3EQC-RIA&lineWrap=true&version=7.28.3)에서 React 컴포넌트를 선언하면 `React.createElement`가 아닌 react/jsx-runtime 패키지의 `jsx` 함수가 사용되고 있는 것을 확인할 수 있다.
+![react-17-jsx](/static/images/react-17-jsx.webp)
+
+왜 변경이 발생했던 걸까?
+[RFC](https://github.com/reactjs/rfcs/blob/createlement-rfc/text/0000-create-element-changes.md)를 보면 성능과 기술부채 등 많은 문제점들이 있었다고 한다.
+
+이 변경으로 인해 우리는 React에서 JSX를 작성할 때 매번 `import React from 'react'` 구문을 작성하지 않아도 된다.
+
+[그 많던 import React from ‘react’는 어디로 갔을까](https://so-so.dev/react/import-react-from-react/)에도 한글로 잘 설명되어 있으니 참고하도록 하자.
+
+## Reference
+
+- [React - JSX로 마크업 작성하기](https://ko.react.dev/learn/writing-markup-with-jsx)
+- [React - JSX 소개](https://ko.legacy.reactjs.org/docs/introducing-jsx.html)
+- [React - 렌더링 그리고 커밋](https://ko.react.dev/learn/render-and-commit)
+- [React - createElement](https://ko.react.dev/reference/react/createElement)
+- [JSX 의 역사를 알아보자](https://medium.com/@dhrod5457/%ED%83%84%EC%83%9D-%EB%B0%B0%EA%B2%BD-10a1b2f5b802)
+- [JavaScript와 ECMAScript는 무슨 차이점이 있을까?](https://wormwlrm.github.io/2018/10/03/What-is-the-difference-between-javascript-and-ecmascript.html)
+- [(번역) DOM은 정확히 무엇일까?](https://wit.nts-corp.com/2019/02/14/5522)
+- [React 렌더링과정으로 알아보는 선언적이라는 의미](https://pozafly.github.io/react/declarative-meaning-of-react-rendering-process/)
+- [그 많던 import React from ‘react’는 어디로 갔을까](https://so-so.dev/react/import-react-from-react/)
