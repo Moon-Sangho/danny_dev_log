@@ -21,7 +21,7 @@ const Header = () => {
             <Image
               src="/static/images/logo.webp"
               alt="Logo"
-              width={52}
+              width={42}
               height={42}
             />
           </div>
