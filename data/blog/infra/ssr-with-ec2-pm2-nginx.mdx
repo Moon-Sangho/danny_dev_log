@@ -1,0 +1,693 @@
+---
+title: EC2, PM2, Nginx로 React Router v7 SSR 배포하기
+date: '2025-12-16'
+tags: ['infra', 'react']
+draft: false
+summary: React Router v7의 SSR 모드로 빌드한 애플리케이션을 AWS EC2, PM2, Nginx를 사용하여 배포해보자.
+---
+
+이전 글에서 React Router v7의 Framework mode에서 지원하는 CSR, Prerendering, SSR에 대해 살펴보았다. 이번 글에서는 React Router v7의 SSR 모드로 빌드한 애플리케이션을 AWS EC2, PM2, Nginx를 사용하여 배포하는 과정을 다뤄보도록 하겠다.
+
+## 1. 로컬에서 SSR 모드의 프로젝트 빌드하기
+
+먼저 [React Router 공식문서](https://reactrouter.com/start/framework/deploying#node-with-docker-custom-server)에서 제공하는 command로 프로젝트를 생성해보자.
+
+```bash
+npx create-react-router@latest --template remix-run/react-router-templates/node-custom-server
+```
+
+`react-router.config.ts` 파일을 보면 ssr 모드로 설정된 것을 확인할 수 있다.
+
+```ts
+import type { Config } from '@react-router/dev/config';
+
+export default {
+  // Config options...
+  // Server-side render by default, to enable SPA mode set this to `false`
+  ssr: true,
+} satisfies Config;
+```
+
+이제부터 간단하게 Post list를 불러오는 Home 페이지와, Post 상세 페이지를 구현해보자. <br />
+
+먼저 `app/types/post.ts` 파일을 생성하여 아래 코드를 추가하자.
+
+```ts
+export type Post = {
+  userId: number;
+  id: number;
+  title: string;
+  body: string;
+};
+```
+
+`app/routes/home.tsx` 파일을 아래와 같이 수정하고,
+
+```tsx
+import { Link, useLoaderData } from 'react-router';
+import type { Post } from '~/types/post';
+
+export async function loader(): Promise<{ posts: Post[] }> {
+  const posts = await fetch('https://jsonplaceholder.typicode.com/posts').then(
+    (response) => response.json()
+  );
+
+  return {
+    posts,
+  };
+}
+
+export default function Home() {
+  const { posts } = useLoaderData<typeof loader>();
+
+  return (
+    <main className="flex flex-col items-center justify-center pb-4 pt-16">
+      {posts.slice(0, 5).map(({ id, title, body }) => (
+        <Link
+          to={`/post/${id}`}
+          key={id}
+          className="mb-4 w-96 rounded border p-4 shadow-md"
+        >
+          <div className="font-bold">Post {id}</div>
+          <h2 className="mb-2 text-xl font-bold">{title}</h2>
+          <p className="text-gray-700">{body}</p>
+        </Link>
+      ))}
+    </main>
+  );
+}
+```
+
+`app/routes/post-detail.tsx` 파일을 생성하여 아래 코드를 추가하자.
+
+```tsx
+import { useLoaderData } from 'react-router';
+import type { Route } from '../+types/root';
+import type { Post } from '~/types/post';
+
+export async function loader({
+  params,
+}: Route.LoaderArgs): Promise<{ post: Post }> {
+  const post = await fetch(
+    `https://jsonplaceholder.typicode.com/posts/${params.id}`
+  ).then((response) => response.json());
+
+  return {
+    post,
+  };
+}
+
+const PostDetail = () => {
+  const { post } = useLoaderData<typeof loader>();
+
+  return (
+    <main className="flex flex-col items-center justify-center pt-4">
+      <div className="p-4">
+        <div className="font-bold">Post {post.id}</div>
+        <h2 className="mb-2 text-xl font-bold">{post.title}</h2>
+        <p className="text-gray-700">{post.body}</p>
+      </div>
+    </main>
+  );
+};
+
+export default PostDetail;
+```
+
+그리고 `app/routes.ts` 파일을 아래와 같이 수정하자.
+
+```tsx
+import { type RouteConfig, index, route } from '@react-router/dev/routes';
+
+export default [
+  index('routes/home.tsx'),
+  route('post/:id', 'routes/post-detail.tsx'),
+] satisfies RouteConfig;
+```
+
+그 다음, `npm run build` 명령어로 프로젝트를 빌드하자. 빌드가 완료되면 `build` 폴더가 생성된다.
+이후 `npm run start` 명령어로 로컬에서 빌드된 SSR 애플리케이션이 잘 동작하는지 확인해보자.
+
+Home에서 UI가 잘 렌더링된다면, Post들을 눌러 상세 페이지로 이동해보자.
+이 때 브라우저의 개발자도구 -> 네트워크 탭을 열어두고, Post 상세 페이지로 이동할 때마다 어떤 데이터가 들어오는지 확인해보자.
+
+![react-framework-mode-data](/static/images/react-framework-mode-data.webp)
+
+jsonplaceholder API가 호출되는 것이 보이지 않고 상세 페이지에 접근할 때마다 1.data, 2.data, ... 형태로 데이터가 들어오는 것을 볼 수 있다.
+
+이런 1.data, 2.data 형태의 데이터는 어디서 오는 것일까?
+SSR 모드를 사용하더라도, 페이지 이동 시에는 Client Side Navigation을 지원하여 필요한 데이터만 클라이언트에서 가져오는 것이다.
+
+즉, 첫 페이지 이후로 유저가 방문하는 페이지들은 `build/server` 가 아닌 `build/client` 쪽에서 데이터를 당겨오는 것이다.
+
+이번엔 Post 상세 페이지에서 새로고침을 해보자.
+
+![react-framework-mode-data-2](/static/images/react-framework-mode-data-2.webp)
+
+이번엔 1.data의 형태가 아니라, 데이터가 채워져 완성된 HTML이 서버에서 내려오는 것을 볼 수 있다.
+
+즉, 첫 페이지 요청 시에는 SSR로 서버에서 완성된 HTML을 내려주는 것이다.
+
+React Router에서는 왜 이런 메커니즘을 적용했을까?
+
+첫 페이지 요청 시에는 SEO와 초기 로딩 속도 향상을 위해 SSR로 완성된 HTML을 내려주고, 이후 페이지 이동 시에는 클라이언트 단에서 필요한 데이터만 가져와 렌더링함으로써 페이지 깜빡임 없는 자연스러운 사용자 경험을 주기 위함이다.
+
+이제 로컬에서 프로젝트가 잘 동작하는 것을 확인했으니, Github에 코드를 올리고 EC2를 이용해 배포해보자.
+
+## 2. EC2 인스턴스 생성하기
+
+---
+
+### EC2란?
+
+[AWS EC2(Elastic Compute Cloud)](https://aws.amazon.com/ec2/)는 확장 가능한 컴퓨팅 용량을 제공하는 웹 서비스로, 사용자는 가상 서버(인스턴스)를 생성하고 관리할 수 있다. 이를 통해 애플리케이션을 클라우드 환경에서 실행하고 확장할 수 있다.
+
+SSR 방식의 웹사이트는 페이지 요청이 들어올 때마다 서버가 직접 HTML을 만들어 사용자에게 전달해야 한다.
+개인 컴퓨터를 서버로 사용할 수도 있지만, 항상 켜둘 수 없고 인터넷 환경도 불안정하다.
+그래서 24시간 안정적으로 동작하는 서버가 필요하며, 이 역할을 AWS EC2가 대신 수행한다.
+
+---
+
+이제 AWS 콘솔에 접속하여 EC2 인스턴스를 생성해보자.
+
+### 1) EC2 생성 페이지로 이동
+
+1. AWS 콘솔 검색창에 EC2 입력 → EC2 대시보드 이동
+2. 오른쪽 상단 Launch instance(인스턴스 시작) 버튼을 클릭한다.
+
+### 2) 기본 정보 입력
+
+**1. Name and tags**
+
+- Name: react-router-ssr (원하는 이름)
+- (선택) Tag: Environment=production 같은 태그 추가해두면 운영/개발 구분 쉬움
+
+**2. Application and OS Images (AMI)**
+
+- Ubuntu Server 22.04 LTS (HVM), SSD Volume Type (Free tier eligible) 선택
+  - 초심자 기준: Ubuntu가 문서/레퍼런스가 많아서 가장 무난하다고 한다.
+
+![ec2-launch-instance-step1](/static/images/ec2/step1.webp)
+
+**3. Instance type**
+
+- 권장 시작:
+  - t3.small (2GB RAM) 이상 추천
+  - SSR/Node는 t3.micro(1GB)에서 메모리 부족으로 뻗는 경우가 꽤 있다고 한다.
+
+![ec2-launch-instance-step2](/static/images/ec2/step2.webp)
+
+### 3) Key pair (로그인 키) 생성 및 다운로드
+
+**1. Create new key pair 클릭**
+
+- Key pair name: react-router-ssr (원하는 이름)
+- Key pair type: RSA
+- Private key file format:
+  - Mac/Linux면 .pem
+  - Windows/Putty면 .ppk (요즘은 Windows도 pem로도 가능)
+
+**2. Create key pair**
+
+- 생성하면 키 파일이 다운로드 됨
+- 이 파일은 다시 다운로드가 안 됨 (잃어버리면 새 키로 갈아타야 함)
+- 로컬에 안전하게 보관: 예) ~/.ssh/react-router-ssr.pem
+
+![ec2-launch-instance-step3](/static/images/ec2/step3.webp)
+
+### 4) Network settings (네트워크/보안그룹)
+
+여기서 **외부 접속 가능 여부**가 갈린다.
+
+**1. Network / VPC**
+
+기본값 그대로
+
+- VPC: default
+- Subnet: default
+- Auto-assign public IP가 보이면 `Enable` 확인
+  - 이게 꺼져 있으면 외부에서 접속이 안 됨
+
+**2. Firewall (security group)**
+
+- Create security group(새 보안 그룹 생성) 선택
+- 인바운드 규칙은 우선 내 IP로 제한
+  - Allow SSH traffic from Source: My IP
+
+![ec2-launch-instance-step4](/static/images/ec2/step4.webp)
+
+**3. Configure storage (디스크)**
+
+- 8GB 기본값 그대로, gp3
+
+> gp2와 gp3의 차이는 성능과 비용에 관한 것인데, gp3가 더 최신 기술로 더 나은 성능을 제공하면서도 비용이 저렴하다. 따라서 gp3를 선택하는 것이 일반적으로 더 유리하다고 한다. <br />
+> 참고: [AWS GP2 Vs. GP3 Volumes: A Side-By-Side Comparison](https://www.cloudzero.com/blog/aws-gp2-vs-gp3/)
+
+![ec2-launch-instance-step5](/static/images/ec2/step5.webp)
+
+**4. Launch instance**
+
+- 모든 설정이 다 끝났으니 우측의 Launch instance 버튼을 클릭하여 클라우드 컴퓨터를 활성화한다.
+
+**5. 인바운드 룰 수정하기**
+
+- 우리의 server.js가 3000 포트에서 돌아가도록 설정할 예정이므로, 3000 포트에 대한 인바운드 규칙을 추가해주자.
+
+  EC2 대시보드 → Instances → 생성한 인스턴스 선택 → Security 탭 → Security groups 클릭 → Inbound rules 탭 → Edit inbound rules 클릭 후 아래와 같이 추가
+
+  - Custom TCP, Port range: 3000, Source: My IP
+
+  ![ec2-launch-instance-step6](/static/images/ec2/step6.webp)
+
+## 3. 로컬에서 EC2에 접속해보기
+
+이제 EC2 인스턴스가 생성되었으니, 로컬 터미널에서 SSH로 접속해보자.
+
+우선 SSH 권한 설정을 해주어야 한다.
+
+위에서 나는 key pair 파일을 `~/.ssh` 경로에 저장했으므로, 아래 명령어를 사용할 수 있다.
+
+```bash
+chmod 400 ~/.ssh/react-router-ssr.pem ubuntu
+```
+
+> SSH는 보안상의 이유로 키 파일의 권한이 너무 넓으면 접속을 허용하지 않으므로, 소유자만 읽을 수 있도록 설정해주는 것이다.
+> chmod 400이 의미하는 것은 소유자(owner)에게 읽기 권한(read-only)을 부여하고, 그룹(group)과 다른 사용자(others)에게는 아무런 권한도 부여하지 않는다는 뜻이다.
+
+잘 적용됐는지 아래 명령어로 확인해보자.
+
+```bash
+ls -l ~/.ssh/react-router-ssr.pem
+```
+
+아래와 같이 표시되면 제대로 설정된 것이다.
+
+```bash
+-r--------  1 user  staff  xxxx react-router-ssr.pem
+```
+
+이제 SSH로 EC2 인스턴스에 접속해보자.
+
+```bash
+ssh -i ~/.ssh/react-router-ssr.pem ubuntu@<EC2_PUBLIC_IP>
+```
+
+`<EC2_PUBLIC_IP>` 부분은 AWS EC2 대시보드 → Instances → 생성한 인스턴스 선택 → Public IPv4 address에서 확인할 수 있다.
+
+최초 접속시 아래와 같은 메시지가 뜰 수 있다.
+
+```bash
+The authenticity of host '3.34.xxx.xxx' can't be established.
+Are you sure you want to continue connecting (yes/no)?
+```
+
+yes를 입력하여 계속 진행하자.
+
+아래와 같은 화면이 뜨면 성공적으로 접속한 것이다.
+
+```bash
+Welcome to Ubuntu 22.04.x LTS
+...
+
+ubuntu@ip-172-31-xx-xx:~$
+```
+
+## 4. EC2에 Node.js, PM2 설치 및 설정하기
+
+---
+
+### PM2란?
+
+[PM2](https://pm2.keymetrics.io/)는 Node.js 애플리케이션을 관리하고 모니터링하는 프로세스 매니저이다. PM2를 사용하면 애플리케이션을 백그라운드에서 실행하고, 자동 재시작, 로드 밸런싱, 로그 관리 등의 기능을 제공하여 서버 운영을 용이하게 한다.
+
+쉽게 말해, PM2는 Node.js 애플리케이션이 서버에서 항상 실행되도록 도와주는 도구이다.
+예를 들어, 우리 컴퓨터의 터미널에서 아래 명령어를 실행하고 터미널을 꺼버리면 서버가 죽는다.
+
+```bash
+node server.js
+```
+
+EC2라는 컴퓨터 안에서 PM2를 사용하면, 아래 명령어로 서버를 실행한 뒤 터미널을 꺼버려도 서버가 계속 살아있게 된다.
+
+```bash
+pm2 start server.js
+```
+
+이 PM2 덕분에 서버가 중간에 종료되더라도 자동으로 다시 실행되어, 서비스가 중단되지 않는다.
+
+---
+
+### 4.1. 패키지 업데이트
+
+EC2 접속된 상태에서 아래 명령어들을 순서대로 실행한다.
+
+```bash
+sudo apt update
+sudo apt -y upgrade
+```
+
+1. **sudo apt update**: 최신 패키지 정보 확인. 어떤 패키지를 업데이트할 수 있는지 목록을 최신으로 가져온다.
+2. **sudo apt -y upgrade**: 현재 설치된 패키지를 최신 상태로 동기화. apt update로 확인된 업데이트 가능한 패키지들을 실제로 업그레이드한다.
+
+`sudo apt -y upgrade` 진행 중 보라색 창의 Pending kernel updates가 뜨면 계속 엔터를 눌러 완료하자.
+
+### 4.2. Node.js 22 설치 (nvm 사용)
+
+1. nvm 설치
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+```
+
+2. 설치 후 쉘 다시 로드
+
+```bash
+source ~/.bashrc
+```
+
+3. 잘 설치됐는지 확인
+
+```bash
+nvm --version
+```
+
+4. Node.js 22 버전 설치 및 npm 버전 확인
+
+```bash
+nvm install 22
+nvm use 22
+node -v
+npm -v
+```
+
+### 4.3. PM2 설치
+
+```bash
+npm i -g pm2
+pm2 -v
+```
+
+모두 잘 설치가 됐다면, EC2를 재부팅해보자.
+
+```bash
+sudo reboot
+```
+
+잠시 동안 기다린 후, 다시 SSH로 접속하여 설치했던 Node.js, PM2가 잘 유지되는지 확인해보자.
+정상이라면 설치된 경로들이 잘 나올 것이다.
+
+```bash
+which node
+which npm
+which pm2
+```
+
+## 5. EC2에 프로젝트 코드 가져오기
+
+이제 Github의 프로젝트 코드를 EC2로 가져올 차례다.
+SSH로 EC2에 접속하여 터미널에서 HTTPS 방식으로 클론해보자.
+
+```bash
+mkdir -p ~/apps && cd ~/apps
+git clone https://github.com/<owner>/<repo>.git react-router-ssr
+cd react-router-ssr
+```
+
+`<owner>`와 `<repo>` 부분은 본인의 깃허브 아이디와 레포지토리명으로 바꿔서 입력하자.
+
+그리고 아래 명령어로 의존성 패키지들을 설치하자.
+
+```bash
+npm install
+```
+
+의존성 설치가 완료되었으면, 로컬에서 했던 것처럼 프로젝트를 빌드해보자.
+
+```bash
+npm run build
+```
+
+만약 프로젝트에서 참조해야할 환경변수가 있다면, build 전에 아래처럼 환경변수를 주입할 수 있다.
+
+```bash
+export VITE_XXX_TOKEN="<Value>"
+```
+
+## 6. 서버를 직접 실행해서 동작 확인해보기
+
+이제 EC2에서 직접 서버를 실행하여, SSR 애플리케이션이 잘 동작하는지 확인해보자.
+
+```bash
+export NODE_ENV=production
+export PORT=3000
+node server.js
+```
+
+성공하면 로그에 아래와 같은 메시지가 뜰 것이다.
+
+```bash
+Starting production server
+Server is running on http://localhost:3000
+```
+
+그리고 브라우저에서 `http://<EC2_PUBLIC_IP>:3000`에 접속해보자.
+페이지를 이동할 때마다 어떤 요청이 오고가는지 터미널에서 로그도 확인할 수 있다.
+
+여기서 페이지가 뜨면 SSR 서버가 EC2에서 실행 가능하다는 뜻이고, 다음 단계(PM2로 서비스 등록)로 넘어갈 수 있다.
+
+만약 페이지가 뜨지 않는다면, EC2의 Security groups 설정에서 3000 포트에 대한 인바운드 규칙이 제대로 설정되었는지 다시 한 번 확인해보자.
+
+## 7. PM2로 SSR 서버 서비스 등록하기
+
+이전 단계에서 직접 `node server.js`로 서버를 실행했는데, 이 방법은 터미널을 닫으면 서버가 종료되는 문제가 있다.
+PM2를 사용하여 서버를 백그라운드에서 실행하고, 터미널을 닫아도 계속 동작하도록 설정해보자.
+
+```bash
+cd ~/apps/react-router-ssr
+PORT=3000 NODE_ENV=production pm2 start server.js --name react-router-ssr
+```
+
+`--name` 옵션은 PM2에서 관리하는 프로세스의 이름을 지정하는 것이다. 원하는 이름으로 바꿔도 된다.
+
+이후 다시 브라우저에서 `http://<EC2_PUBLIC_IP>:3000`에 접속해보자.
+페이지가 잘 뜬다면 성공이다!
+
+Ctrl + D로 터미널에서 로그아웃한 후, `http://<EC2_PUBLIC_IP>:3000`에 다시 접속해봐도 페이지가 잘 뜬다면 PM2로 서버가 잘 등록된 것이다.
+
+그런데 지금 상태로는 EC2 인스턴스를 재부팅하면 PM2도 같이 종료되므로, 재부팅 후에도 PM2가 자동으로 시작되도록 설정해주어야 한다.
+
+```bash
+pm2 startup
+```
+
+위 명령어를 실행하면, sudo로 실행하라고 한 줄 명령이 출력될 것이다. 그대로 복사해서 붙여넣고 실행하자.
+
+그 다음, 현재 실행 중인 PM2 프로세스 목록을 저장하자.
+
+```bash
+pm2 save
+```
+
+위 명령어로 현재 실행 중인 PM2 프로세스 목록이 저장되었으며, 이제 EC2 인스턴스를 재부팅해도 PM2가 자동으로 시작되고, 저장된 프로세스들이 다시 실행될 것이다.
+
+`sudo reboot`로 EC2를 재부팅하고 잠시 후 다시 `http://<EC2_PUBLIC_IP>:3000`에 접속해보자.
+페이지가 잘 뜨고, 다시 SSH로 접속하여 `pm2 status` 명령어를 실행했을 때 react-router-ssr 프로세스가 실행 중이라면 성공이다!
+
+## 8. Nginx로 :3000 포트를 숨기고 :80 포트로 접속하기
+
+지금까지는 `http://<EC2_PUBLIC_IP>:3000`으로 접속해야만 SSR 애플리케이션에 접근할 수 있었다.
+하지만 일반적으로 웹사이트는 포트 번호를 붙이지 않고 접속하는 것이 관례이다.
+이를 위해 Nginx를 사용하여 80 포트로 접속했을 때 내부적으로 3000 포트로 프록시 요청이 가도록 설정해보자.
+
+> 프록시 요청이란? <br />
+> 프록시 요청이란 사용자의 인터넷 요청을 웹 서버에 직접 보내지 않고, 프록시 서버라는 중간 매개체(대리인)를 통해 전달하는 방식의 요청이다. <br />
+> 예를 들어, 사용자가 웹 브라우저에서 `http://example.com`에 접속하면, 브라우저는 먼저 프록시 서버에 요청을 보내고, 프록시 서버가 대신 `http://example.com` 서버에 요청을 전달한다. <br />
+> 서버로부터 응답이 오면, 프록시 서버가 그 응답을 받아 다시 클라이언트에게 전달한다. <br />
+> 이 과정에서 프록시 서버는 사용자의 실제 IP 주소를 숨기고 자신의 IP 주소로 서버에 접속하며, 캐싱(caching) 기술을 이용해 속도를 높이고, 보안 및 접근 제어, 익명성 확보 등의 다양한 이점을 제공한다.
+
+먼저 EC2 Security groups에서 인바운드 규칙을 아래와 같이 바꾼다.
+
+- ✅ SSH 22 : 내 IP
+- ✅ HTTP 80 : 0.0.0.0/0 (누구나 접속 가능)
+- ❌ Custom TCP 3000 : 삭제하거나 최소 내 IP만
+
+그 다음, Nginx를 설치하고 잘 설치됐는지 확인해보자.
+
+```bash
+sudo apt update
+sudo apt -y install nginx
+sudo systemctl status nginx
+```
+
+이제 브라우저에서 `http://<EC2_PUBLIC_IP>`에 접속해보자.
+Welcome to nginx! 페이지가 뜬다면 Nginx가 정상적으로 설치된 것이다.
+
+이제 Nginx를 react-router-ssr로 리버스 프록시하도록 설정해보자.
+
+> 리버스 프록시란? <br />
+> 프록시에는 포워드 프록시(Forward Proxy)와 리버스 프록시(Reverse Proxy)가 있다. <br />
+> 포워드 프록시는 클라이언트 측에서 서버로 가는 요청을 중계하는 반면, 리버스 프록시는 서버 측에서 클라이언트로 가는 요청을 중계한다. <br />
+> 즉, 리버스 프록시는 클라이언트가 직접 서버에 접속하지 않고, 프록시 서버가 대신 서버에 접속하여 응답을 받아 클라이언트에게 전달하는 방식이다. <br />
+> 쉽게 말하면, 누구를 숨기느냐의 차이이다. <br />
+> 포워드 프록시는 클라이언트의 IP를 숨기고, 리버스 프록시는 서버의 IP를 숨긴다.
+
+즉, 유저가 `http://<EC2_PUBLIC_IP>`에 접속하면, Nginx가 내부적으로 `http://127.0.0.1:3000(Node SSR)`로 요청을 전달하여 SSR 애플리케이션이 응답하도록 만드는 것이다.
+
+### 8.1. 새 설정 파일 생성
+
+```bash
+sudo nano /etc/nginx/sites-available/react-router-ssr
+```
+
+`/etc/nginx/sites-available/`는 사용 가능한 사이트 설정 파일들을 모아두는 폴더(템플릿/보관소)이다.
+
+그 다음, 아래 내용을 붙여넣고 저장(Ctrl + O), Enter → Ctrl + X로 파일을 나간다.
+
+```nginx
+server {
+  listen 80;
+  server_name _;
+
+  client_max_body_size 10m;
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+  }
+}
+```
+
+<details>
+	<summary>위 설정들의 의미가 궁금하다면 클릭</summary>
+
+    1. **server `{ ... }`**
+
+    - Nginx의 **사이트 하나**를 의미하는 블록.
+
+    2. **listen 80;**
+
+    - Nginx가 80번 포트(HTTP) 에서 요청을 받겠다는 뜻.
+    - 그래서 사용자는 http://IP/만 쳐도 접속이 됨.
+
+    3. **server_name \_;**
+
+    - 어떤 호스트 이름(도메인) 요청을 받을지 지정.
+    - \_는 '아직 도메인 없으니, 들어오는 요청을 일단 다 받자' 느낌의 기본 처리로 많이 씀.
+    - 나중에 도메인을 붙이면:
+    	- server_name `abc.com www.abc.com`; 처럼 바꿀 수 있다.
+
+    4. **client_max_body_size 10m;**
+
+    - 업로드/POST 요청 body 최대 크기 제한.
+    - SSR만 해도 되지만, 추후 폼/업로드 기능이 생기면 필요할 수 있다.
+    - 없으면 기본값(작을 수 있음) 때문에 413 에러가 날 수 있다.
+
+    5. **location / `{ ... }`**
+
+    - '/' 경로로 들어오는 모든 요청에 대해 아래 설정을 적용하겠다는 뜻.
+
+    6. **proxy_pass http://127.0.0.1:3000;**
+
+    - '요청을 내부의 Node 서버로 넘겨라'는 뜻.
+    - 127.0.0.1은 서버 자기 자신.
+    - 의미: Node는 외부 공개가 아니라 '서버 내부에서만' 접근하게 된다.
+
+    7. **proxy_set_header ...**
+
+    	Nginx가 Node로 요청을 넘길 때, 기본적으로 일부 헤더가 바뀌거나 사라질 수 있다.
+    	SSR/로그/보안 처리를 위해 원래 정보를 전달하는 게 일반적이라고 한다.
+
+    	- Host $host; <br />
+    		사용자가 요청한 도메인/호스트 값을 Node가 알게 함 <br />
+    		(나중에 도메인 붙이면 SSR에서 절대 URL 생성 등에 중요)
+
+    	- X-Real-IP $remote_addr; <br />
+    		Node 입장에서 '진짜 클라이언트 IP'를 알 수 있게 전달
+
+    	- X-Forwarded-For $proxy_add_x_forwarded_for; <br />
+    		프록시 체인을 따라온 IP 목록(표준 관례)
+
+    	- X-Forwarded-Proto $scheme; <br />
+    		현재 접속이 http인지 https인지 Node가 알게 함
+    		(HTTPS 붙이면 매우 중요)
+
+    8. **proxy_http_version 1.1; & Connection ""**
+
+    - 일부 환경에서 keep-alive, 스트리밍, SSE(Server-Sent Events) 같은 케이스에 필요할 수 있는 안정성 옵션.
+    - React Router SSR에서 스트리밍/기타 기능 쓸 때 문제가 덜 나는 방향.
+
+</details>
+
+### 8.2. 사이트 활성화
+
+```bash
+sudo ln -s /etc/nginx/sites-available/react-router-ssr /etc/nginx/sites-enabled/react-router-ssr
+```
+
+위 명령의 의미는,
+
+- ln -s : 심볼릭 링크(바로가기) 생성
+- available에 있는 react-router-ssr 설정을 enabled에 **켜짐 상태**로 등록
+
+> 왜 복사(copy)가 아니라 심볼릭 링크(바로가기)로 만드는가? <br />
+> 수정은 available에서 하고, enabled는 '활성 목록'만 관리하기 위해서.
+
+### 8.3. 기본 사이트 제거(충돌 방지)
+
+```bash
+sudo rm /etc/nginx/sites-enabled/default
+```
+
+Ubuntu의 Nginx는 기본으로 /etc/nginx/sites-enabled/default가 켜져 있다.
+이게 그대로 있으면
+
+- 같은 listen 80;을 두 개 server 블록이 잡고
+- '어느 설정이 적용되는지'가 헷갈리거나 기본 페이지가 계속 뜨는 문제가 생긴다.
+
+> default 파일 자체를 삭제하는 게 아니라 enabled에서만 제거하는 게 포인트이다.
+
+### 8.4. Nginx 설정 테스트 및 재시작
+
+Nginx 설정 문법이 하나라도 틀리면 reload가 실패하고 서비스가 중단될 수 있기 때문에 먼저 `nginx -t`로 문법 검사를 한다.
+
+```bash
+sudo nginx -t
+```
+
+문법 검사가 성공하면 아래 메시지가 출력된다.
+
+- nginx: ~~~ ... syntax is ok
+- nginx: ~~~ ... test is successful
+
+그 다음, 프로세스를 끊지 않고 설정만 재적용한다.
+
+```bash
+sudo systemctl reload nginx
+```
+
+reload의 의미는 Nginx 프로세스를 완전히 재시작(restart)하지 않고, 설정 파일만 다시 불러와 적용하는 것이다.
+
+### 8.5 최종 확인
+
+이제 터미널에서 `pm2 status`를 입력하여 react-router-ssr 프로세스가 실행 중인지 확인한 후, 브라우저에서 `http://<EC2_PUBLIC_IP>`에 접속해보자.
+페이지가 잘 뜬다면 성공이다!
+
+EC2 + Nginx + PM2로 React Router v7 SSR 애플리케이션을 성공적으로 배포한 것이다.
+
+만약 EC2 인스턴스를 자주 Stop/Start 자주 한다면 [Elastic IP](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/elastic-ip-addresses-eip.html)라는 것을 사용하는 것이 좋은데, [여기](https://velog.io/@sung-je-kim/AWS-EC2-deploy-feat.-pm2-NGINX-Certbot-Route53#2-%ED%83%84%EB%A0%A5%EC%A0%81-ip)에 한글로 잘 설명되어 있으니 참고하여 설정해보자.
+
+해당 프로젝트 코드는 [Github](https://github.com/Moon-Sangho/react-router-ssr.git)에서 확인할 수 있다.
+
+## Reference
+
+- [[AWS EC2] 배포를 해야 하는데, 막막할 때 (feat. pm2, NGINX, Certbot, Route53)](https://velog.io/@sung-je-kim/AWS-EC2-deploy-feat.-pm2-NGINX-Certbot-Route53#1-%EC%9D%B8%EC%8A%A4%ED%84%B4%EC%8A%A4-%EC%83%9D%EC%84%B1)
+- [Deploying a Node.js App on AWS with PM2, NGINX, and SSL](https://medium.com/@kevalrabadiya27/deploying-a-node-js-app-on-aws-with-pm2-nginx-and-ssl-35498c9de7b1)
+- [SSR 배포 전략 with EC2, CloudFront, pm2, NGINX (1)](https://velog.io/@jeongs/SSR-%EB%B0%B0%ED%8F%AC-%EC%A0%84%EB%9E%B5-with-EC2-CloudFront-NGINX#-ssr-%EB%B0%B0%ED%8F%AC-%EC%A0%84%EB%9E%B5)
+- [SSR 배포 전략 with EC2, CloudFront, pm2, NGINX (2)](https://velog.io/@jeongs/SSR-%EB%B0%B0%ED%8F%AC-%EC%A0%84%EB%9E%B5-with-EC2-CloudFront-pm2-NGINX-2)
