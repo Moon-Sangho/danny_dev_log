@@ -1,0 +1,346 @@
+---
+title: React Router v7 Framework mode의 렌더링 방식 비교
+date: '2025-12-15'
+tags: ['react']
+draft: false
+summary: React Router v7의 Framework mode에서 지원하는 CSR, Prerendering, SSR에 대해 알아보기
+---
+
+React Router는 React 애플리케이션에서 라우팅을 관리하는 데 널리 사용되는 라이브러리이다. React Router는 v7에서 Framework mode라는 새로운 기능을 도입하여, CSR(Client-Side Rendering), Prerendering, SSR(Server-Side Rendering)을 지원한다. 이번 글에서는 각 렌더링 방식별 빌드 결과물을 기반으로 React Router의 Framework mode에 대해 이해해보자.
+
+## TL;DR
+
+- React Router v7의 Framework mode는 CSR, Prerendering, SSR을 지원하여 다양한 렌더링 전략을 선택할 수 있다.
+- CSR은 클라이언트 측에서 모든 렌더링이 이루어지며, 초기 로드 시 최소한의 HTML과 JavaScript 번들이 전송된다.
+- Prerendering은 빌드 시점에 모든 페이지를 미리 렌더링하여 정적 HTML 파일로 생성하는 방식이다.
+- SSR은 페이지 요청이 발생했을 때 서버 측에서 페이지를 렌더링하여 HTML을 클라이언트에 전송하는 방식이다.
+- loader는 데이터 페칭을 컴포넌트 렌더링 이전 단계로 분리하여, API 요청 시 waterfall 없이 효율적인 데이터 로딩을 가능하게 한다.
+
+## React Router Framework mode에서 지원하는 렌더링 방식
+
+React Router의 Framework mode에서는 다양한 렌더링 전략을 지원한다. 이를 통해 개발자는 애플리케이션의 요구사항에 맞게 렌더링 방식을 선택할 수 있다. 주요 렌더링 방식은 다음과 같다:
+
+- CSR (Client-Side Rendering)
+- Prerendering
+- SSR (Server-Side Rendering)
+
+## 각 렌더링 방식별 특징과 빌드 결과물 분석
+
+### 1. CSR (Client-Side Rendering)
+
+CSR은 전통적인 React 애플리케이션에서 사용되는 렌더링 방식이다. 클라이언트 측에서 모든 렌더링이 이루어지며, 초기 로드 시 최소한의 HTML과 JavaScript 번들이 전송된다. 이후 사용자가 페이지를 탐색할 때마다 필요한 데이터를 가져와서 렌더링한다.
+
+#### 직접 빌드해보기
+
+[공식 문서](https://reactrouter.com/start/framework/installation#introduction)에 적힌대로, 아래 명령어들을 차례로 실행하여 React Router 프로젝트를 생성해보자.
+
+```bash
+npx create-react-router@latest my-react-router-app
+cd my-react-router-app
+npm i
+```
+
+그리고 `react-router.config.ts`에서 아래와 같이 설정하여 CSR Only 프로젝트로 변경한다.
+
+```ts
+import type { Config } from '@react-router/dev/config';
+
+export default {
+  ssr: false,
+} satisfies Config;
+```
+
+현재는 home 경로만 존재하므로, `app/routes/about.tsx`에 간단한 페이지를 작성해보자.
+
+```tsx
+export default function About() {
+  return (
+    <div>
+      <h1>About Page</h1>
+      <p>This is the about page of the application.</p>
+    </div>
+  );
+}
+```
+
+그리고 `routes.ts` 파일에 about 경로를 추가한다.
+
+```tsx
+import { type RouteConfig, index, route } from '@react-router/dev/routes';
+
+export default [
+  index('routes/home.tsx'),
+  route('about', 'routes/about.tsx'),
+] satisfies RouteConfig;
+```
+
+이제 `npm run build`를 실행하고, 루트 경로의 `build` 폴더를 확인해보자.
+
+![react-router-framework-csr](/static/images/react-router-framework-csr.webp)
+
+위의 빌드 결과를 보면, `index.html` 파일과 함께 JavaScript 번들이 생성된 것을 확인할 수 있다. 또 `index.html` 내부를 확인해보면, `<body>` tag 내부에 몇몇 `<script>` tag들을 제외하고는 컨텐츠가 비어있는 것을 확인할 수 있다. 이는 CSR 방식의 특징으로, 초기 로드 시 최소한의 HTML만 제공되고, 이후 클라이언트 측에서 JS 번들을 통해 렌더링이 이루어지기 때문이다.
+
+빌드 결과물들로 미루어보아 **실행 흐름**은 크게 아래와 같이 파악했다.
+
+1.  브라우저가 index.html을 받는다.
+2.  CSS와 필수 JS를 modulepreload로 미리 당겨온다(로딩 최적화)
+    ```html
+    <link rel="modulepreload" href="/assets/manifest-95c4c2a6.js" />
+    <link rel="modulepreload" href="/assets/entry.client-Cf1gF1RK.js" />
+    <link rel="modulepreload" href="/assets/chunk-WWGJGFF6-DiwFlXBc.js" />
+    <link rel="modulepreload" href="/assets/root-DGnhYwYs.js" />
+    ```
+3.  `window.__reactRouterContext`, `window.__reactRouterRouteModules` 같은 전역 초기값을 세팅하고, 마지막에 `entry.client-*.js`를 import한다.
+    → 이 파일이 React Router/React를 실행해서 화면을 렌더링한다.
+
+    ```html
+    <script>
+      window.__reactRouterContext = {
+        basename: '/',
+        future: {
+          unstable_optimizeDeps: false,
+          unstable_subResourceIntegrity: false,
+          v8_middleware: false,
+          v8_splitRouteModules: false,
+          v8_viteEnvironmentApi: false,
+        },
+        routeDiscovery: { mode: 'initial' },
+        ssr: false,
+        isSpaMode: true,
+      };
+      window.__reactRouterContext.stream = new ReadableStream({
+        start(controller) {
+          window.__reactRouterContext.streamController = controller;
+        },
+      }).pipeThrough(new TextEncoderStream());
+    </script>
+    <script type="module" async="">
+      import '/assets/manifest-95c4c2a6.js';
+      import * as route0 from '/assets/root-DGnhYwYs.js';
+
+      window.__reactRouterRouteModules = { root: route0 };
+
+      import('/assets/entry.client-Cf1gF1RK.js');
+    </script>
+    ```
+
+assets 폴더 안의 파일들이 맡는 **역할**을 유추해보면 다음과 같다:
+
+- **entry.client-\*.js**: 라우터 만들고 ReactDOM으로 마운트하는 진입점
+- **root-\*.js**: 모든 페이지가 공유하는 루트 라우트 (레이아웃/전역 설정) 모듈
+- **home-\*.js, about-\*.js…**: 페이지(라우트) 모듈
+- **chunk-\*.js**: 공통 라이브러리/런타임이 뽑혀 나온 모듈 (React, ReactDOM, React Router 등)
+- **manifest-\*.js**: 라우트 전환/초기화 시점에 무엇을 동적으로 로드할지 결정하는 지도 역할을 하는 모듈
+  - e.g, 특정 라우트에 loader가 있는지, index 페이지인지, 어떤 모듈을 import해야 하는지
+  - 이 파일은 `entry.client-*.js`에서 소비되고, 모듈들을 동적으로 import 할 수 있도록 한다. (code-splitting)
+
+추가로 위 코드 중 `new ReadableStream` 부분이 눈에 띄는데, 이는 주로 Streaming SSR에서 사용되는 [ReadableStream API](https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream)이다. CSR-Only에서는 큰 의미가 없지만, React Router의 공통 포맷을 유지하기 위해 포함된 것으로 보인다. 이 부분은 밑에 SSR 파트에서 다시 다루도록 하겠다.
+
+### 2. Prerendering
+
+Prerendering은 빌드 시점에 모든 페이지를 미리 렌더링하여 정적 HTML 파일로 생성하는 방식이다. 이를 통해 초기 로드 시간이 단축되고, SEO에 유리한 구조를 만들 수 있다. 실시간성이 크게 중요하지 않은 정적 페이지에 적합하다.
+
+#### 직접 빌드해보기
+
+이번에는 Prerendering 모드로 변경해보자. `react-router.config.ts` 파일에서 아래와 같이 설정을 변경한다.
+
+```ts
+import type { Config } from '@react-router/dev/config';
+
+export default {
+  ssr: false,
+  prerender: true, // boolean 타입뿐 아니라, 특정 페이지들만 prerendering 하도록 배열, 함수 형태로도 설정 가능
+} satisfies Config;
+```
+
+그리고 `npm run build`를 실행하고, 루트 경로의 `build` 폴더를 확인해보자.
+
+![react-router-framework-prerender](/static/images/react-router-framework-prerendering.webp)
+
+메인, about 경로 각각에 대해 HTML 파일이 생성된 것을 확인할 수 있다. 각 HTML 파일 내부를 확인해보면, `<body>` tag 내부에 미리 렌더링된 컨텐츠가 포함되어 있는 것을 볼 수 있다. 이는 Prerendering 방식의 특징으로, 빌드 시점에 모든 페이지가 미리 렌더링되어 정적 HTML 파일로 생성되기 때문이다.
+
+`__spa-fallback.html` 파일은 `/` 페이지가 prerender 처리 됐을 때 생성되는 파일로, SPA 모드에서 클라이언트 사이드 네비게이션이 제대로 동작하도록 돕는 역할을 한다. 이 파일은 사용자가 존재하지 않는 경로로 접근했을 때, 클라이언트 측에서 라우팅을 처리할 수 있도록 기본 HTML 구조를 제공한다.
+
+더 자세한 사항은 [Pre-rendering with a SPA Fallback](https://reactrouter.com/how-to/pre-rendering#pre-rendering-with-a-spa-fallback)에 나와있으니 참고하도록 하자.
+
+### 3. SSR (Server-Side Rendering)
+
+SSR은 페이지 요청이 발생했을 때 서버 측에서 페이지를 렌더링하여 HTML을 클라이언트에 전송하는 방식이다. 이를 통해 초기 로드 시간이 단축되고, SEO에 매우 유리한 구조를 만들 수 있다. 실시간성이 중요한 페이지에 적합하다.
+
+#### 직접 빌드해보기
+
+`react-router.config.ts` 파일에서 아래와 같이 설정을 변경한다.
+
+```ts
+import type { Config } from '@react-router/dev/config';
+export default {
+  ssr: true,
+} satisfies Config;
+```
+
+그리고 `npm run build`를 실행하고, 루트 경로의 `build` 폴더를 확인해보자.
+
+![react-router-framework-ssr](/static/images/react-router-framework-ssr.webp)
+
+기존의 html 파일들이 사라지고, `server` 폴더가 생성된 것을 확인할 수 있다. 이 폴더 내부에는 서버에서 페이지 요청을 처리하기 위한 JavaScript 파일이 포함되어 있다.
+`server/index.js` 파일 내부를 살펴보면, home, about 경로의 트랜스파일된 코드들이 포함되어 있는 것을 볼 수 있다.
+
+그런데 `client/assets` 폴더를 확인해보면, `home-*.js`, `about-*.js` 파일들도 존재하는 것을 볼 수 있다.
+왜 server, client 양쪽에 동일한 페이지 모듈들이 존재하는 것일까?
+
+---
+
+**1. server/index.js 에서 하는 일**
+
+코드를 살펴보면 `renderToPipeableStream` + `ServerRouter`로 HTML을 만들고 스트리밍해서 응답하는 코드가 있다.
+
+```jsx
+const { pipe, abort } = renderToPipeableStream(
+	/* @__PURE__ */ jsx(ServerRouter, {
+		context: routerContext,
+		url: request.url,
+	}),
+	{
+		[readyOption]() {
+			shellRendered = true;
+			const body = new PassThrough({
+				final(callback) {
+					clearTimeout(timeoutId);
+					timeoutId = void 0;
+					callback();
+				},
+			});
+			const stream = createReadableStreamFromReadable(body);
+			responseHeaders.set('Content-Type', 'text/html');
+			pipe(body);
+			resolve(
+				new Response(stream, {
+					headers: responseHeaders,
+					status: responseStatusCode,
+				})
+			);
+		},
+	}
+
+	...
+)
+```
+
+- 서버 번들은 Node에서 실행되는 코드라서 react-dom/server의 `renderToPipeableStream`, node:stream의 `PassThrough`
+  같은 서버 전용 API를 쓴다.
+
+- 그리고 라우트 모듈(Root/Home/About의 컴포넌트와 meta/links/ErrorBoundary 등)을 서버에서 import해서
+  - 요청이 오면 그 라우트에 맞는 HTML을 만들거나(SSR)
+  - 또는 빌드 단계에서 정적 HTML을 뽑아내는(Prerendering) 데 사용한다.
+
+즉, 서버 번들에 home/about의 컴포넌트 로직이 들어있는 건 서버가 HTML을 만들려면 그 컴포넌트 정의를 알아야 하기 때문이다.
+
+**2. client/assets의 JS 파일들이 하는 일**
+
+클라이언트 번들은 **브라우저에서 실행되는 코드**이다.
+
+- `entry.client-*.js`가 라우터를 만들고 React를 마운트하고,
+- `home-*.js`, `about-*.js` 같은 페이지 번들은 브라우저에서 라우트 전환 시 렌더링할 컴포넌트를 제공한다.
+- 서버와 달리 react-dom/server 같은 건 못 쓰고, 브라우저에서 사용할 수 있는 코드만 들어간다.
+
+즉, Client Side Navigation을 지원하기 위해 home/about 컴포넌트가 필요하니까 페이지별 JS가 따로 존재하는 것이다.
+
+---
+
+다시 돌아와서, `npm start`로 서버를 실행하고, 브라우저에서 localhost에 접속하여 우클릭 후 "페이지 소스 보기"를 선택해보자. 서버에서 렌더링된 HTML이 클라이언트에 전송되는 것을 확인할 수 있다.
+
+이번에는 data fetching이 포함된 페이지를 추가해보자. `app/routes/home.tsx`을 아래와 같이 수정한다.
+
+```tsx
+import { useLoaderData } from 'react-router';
+
+type Post = {
+  userId: number;
+  id: number;
+  title: string;
+  body: string;
+};
+
+export async function loader(): Promise<{ posts: Post[] }> {
+  const posts = await fetch('https://jsonplaceholder.typicode.com/posts').then(
+    (response) => response.json()
+  );
+
+  return {
+    posts,
+  };
+}
+
+export default function Home() {
+  const { posts } = useLoaderData<typeof loader>();
+
+  return (
+    <main className="flex flex-col items-center justify-center pb-4 pt-16">
+      {posts.slice(0, 5).map((post) => (
+        <div key={post.id} className="mb-4 w-96 rounded border p-4 shadow-md">
+          <h2 className="mb-2 text-xl font-bold">{post.title}</h2>
+          <p className="text-gray-700">{post.body}</p>
+        </div>
+      ))}
+    </main>
+  );
+}
+```
+
+그리고 `npm run build`를 실행한 뒤 `build/server/index.js` 파일을 확인해보자. `loader` 함수와 `useLoaderData`가 트랜스파일된 코드가 포함되어 있는 것을 볼 수 있다.
+
+```jsx
+async function loader() {
+  const posts = await fetch('https://jsonplaceholder.typicode.com/posts').then(
+    (response) => response.json()
+  );
+  return {
+    posts,
+  };
+}
+const home = UNSAFE_withComponentProps(function Home() {
+  const { posts } = useLoaderData();
+  return /* @__PURE__ */ jsx('main', {
+    className: 'flex flex-col items-center justify-center pt-16 pb-4',
+    children: posts.slice(0, 5).map((post) =>
+      /* @__PURE__ */ jsxs(
+        'div',
+        {
+          className: 'mb-4 p-4 border rounded shadow-md w-96',
+          children: [
+            /* @__PURE__ */ jsx('h2', {
+              className: 'text-xl font-bold mb-2',
+              children: post.title,
+            }),
+            /* @__PURE__ */ jsx('p', {
+              className: 'text-gray-700',
+              children: post.body,
+            }),
+          ],
+        },
+        post.id
+      )
+    ),
+  });
+});
+```
+
+이 구조의 핵심은 컴포넌트가 더 이상 데이터 페칭의 책임을 지지 않는다는 점이다. Home 컴포넌트는 loader가 이미 준비한 데이터를 받아 순수하게 렌더링만 수행하며, 데이터 페칭은 항상 렌더링 이전 단계에서 완료된다. 이러한 분리 덕분에 Streaming SSR 환경에서도 데이터 waterfall로 인한 렌더링 지연 없이 안정적인 서버 렌더링이 가능해진다.
+
+예를 들어 Home 페이지에서 posts API 외에도 여러 개의 API 호출이 필요하다면, loader에서 이를 `Promise.all`을 이용해 병렬로 모든 데이터를 한 번에 준비할 수 있다. 이 방식은 스트리밍 과정에서 발생할 수 있는 불필요한 렌더링 지연을 구조적으로 제거할 수 있다.
+
+> Streaming SSR이란? <br />
+> 서버에서 모든 데이터가 준비될 때까지 기다리지 않고, 렌더링 가능한 부분부터 HTML을 순차적으로 전송하는 방식이다.
+> 참고: [Streaming SSR](https://patterns-dev-kr.github.io/rendering-patterns/streaming-server-side-rendering/)
+
+---
+
+## 마치며
+
+이번 글에서는 React Router v7의 Framework mode에서 지원하는 CSR, Prerendering, SSR에 대해 살펴보았다. 각 렌더링 방식의 특징과 빌드 결과물을 분석해봄으로써, React Router가 내부적으로 어떻게 동작하는지 이해할 수 있었다. 다음 글에서는 SSR과 Prerendering을 적용한 토이프로젝트에서 직접 EC2, PM2, Nginx를 사용하여 배포하는 과정을 다뤄보도록 하겠다.
+
+## Reference
+
+- [React Router 공식문서](https://reactrouter.com/home)
+- [When To Fetch: Remixing React Router - Ryan Florence](https://livewiki.com/ko/content/fetch-remixing-react-router)
+- [Choosing the right React Router v7 mode for your project](https://blog.logrocket.com/react-router-v7-modes/)
