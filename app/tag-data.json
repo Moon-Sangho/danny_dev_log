@@ -1,8 +1,8 @@
 {
   "algorithm": 4,
-  "infra": 1,
-  "react": 6,
   "bundler": 1,
   "frontend": 2,
+  "infra": 1,
+  "react": 6,
   "javascript": 11
 }
