@@ -1,8 +1,11 @@
 {
   "algorithm": 4,
-  "bundler": 1,
-  "frontend": 2,
   "infra": 1,
   "react": 6,
-  "javascript": 11
+  "bundler": 1,
+  "frontend": 2,
+  "javascript": 11,
+  "npm": 1,
+  "debug": 1,
+  "dependency": 1
 }

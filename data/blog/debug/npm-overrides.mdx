@@ -1,0 +1,517 @@
+---
+title: npm overrides로 의존성 버전 충돌 해결하기
+date: '2026-01-31'
+tags: ['debug', 'npm', 'dependency']
+draft: false
+summary: Prettier 버전 충돌 문제를 npm overrides로 해결한 사례
+---
+
+오래된 버전의 패키지들을 요구하는 프로젝트에서 테스트 코드를 실행했는데, 분명히 에디터 상에서는 아무런 에러를 표시하지 않는데도 테스트 실행 시 prettier 관련 에러를 뿜어댔다.
+이번 글에서는 이 문제를 해결하기 위해 npm의 `overrides` 기능을 활용한 경험을 공유하고자 한다.
+
+> 디버깅을 위해 Claude(haiku-4.5)를 적극 활용했으며, 아티클 중간중간 Claude의 답변들도 인용했다.
+
+## TL;DR
+
+- **npm overrides**: 프로젝트의 하위 의존성(transitive dependency)의 버전을 강제하는 npm 기능
+- **문제 상황**: 프로젝트는 prettier@3.8.1을 사용하지만, Storybook의 @storybook/codemod가  
+  prettier@2.8.8을 가져와서 여러 버전이 동시에 설치됨
+- **해결책**: `package.json`의 `overrides` 필드에 `"prettier": "^3.0.0"`를 추가해서 모든 prettier를  
+  3.8.1로 통일
+- **효과**: 모든 도구(prettier CLI, eslint-plugin-prettier)가 동일한 설정을 인식하게 되어 일관된 동작  
+  보장
+- **사용 시기**: 직접 제어하지 못하는 하위 의존성의 버전 충돌이 발생할 때, 또는 보안 패치 강제 적용이  
+  필요할 때
+
+## 문제 발견
+
+Node.js v19.9, npm v9.6.3 환경의 Vite + React 프로젝트에서 Vitest를 이용해 테스트 코드를 작성하고 테스트를 실행해봤는데 다음과 같은 에러가 나타났다.
+
+```bash
+  FAIL  src/components/tests/TextField.spec.jsx [ src/components/tests/TextField.spec.jsx ]
+  Error:
+  /src/components/tests/TextField.spec.jsx
+  24:68  error  Replace `⏎····'my-class',⏎··` with `'my-class'`  prettier/prettier
+
+  ✖ 1 problem (1 error, 0 warnings)
+  1 error and 0 warnings potentially fixable with the `--fix` option.
+
+  Plugin: vite-plugin-eslint
+  File:
+  /src/components/tests/TextField.spec.jsx
+  ❯ TransformPluginContext._formatLog
+  node_modules/vitest/node_modules/vite/dist/node/chunks/config.js:28999:43
+  ❯ TransformPluginContext.error
+  node_modules/vitest/node_modules/vite/dist/node/chunks/config.js:28996:14
+  ❯ TransformPluginContext.transform node_modules/vite-plugin-eslint/dist/index.mjs:1:1927
+  ❯ EnvironmentPluginContainer.transform
+  node_modules/vitest/node_modules/vite/dist/node/chunks/config.js:28797:14
+  ❯ loadAndTransform node_modules/vitest/node_modules/vite/dist/node/chunks/config.js:22670:26
+  ❯ fetchModule node_modules/vitest/node_modules/vite/dist/node/chunks/config.js:33993:15
+
+  ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+  Test Files  1 failed (1)
+  Tests  no tests
+  Start at  01:22:54
+  Duration  38ms
+```
+
+이상한 점이 여러 개였다.
+
+1. **prettier 직접 실행**: `npx prettier --write` -> "파일이 이미 올바른 형식입니다 (unchanged)"
+2. **eslint 실행**: `npx eslint --fix` -> 여전히 같은 에러 표시
+3. **.prettierrc 설정**: `printWidth: 80`으로 설정했는데, `printWidth: 100`으로 변경하면 에러가 사라짐
+
+### Try 1
+
+에러의 이유를 Claude에게 물어봤다.
+
+그냥 `printWidth: 100`으로 바꾸라는 답변이 돌아왔다.
+
+하지만 이건 우회적인 해결책일 뿐, 근본적인 원인을 모른 채 지나가고 싶지 않아서 다시 한번 질문했다.
+
+### Try 2
+
+"나는 `printWidth: 80`을 유지하면서, 근본적인 원인을 파악해서 해결하고 싶어".
+
+이번에는 아래와 같이 `.eslintrc.json`에 아래 내용을 추가하면 된다고 했다.
+
+```json
+Update(.eslintrc.json)
+  ⎿  User rejected update to .eslintrc.json
+      24    "rules": {
+      25      "no-unused-vars": "warn",
+      26      "react/prop-types": "off",
+      27 +    "prettier/prettier": [
+      28 +      "error",
+      29 +      {
+      30 +        "singleQuote": true,
+      31 +        "trailingComma": "all",
+      32 +        "arrowParens": "avoid",
+      33 +        "printWidth": 80
+      34 +      }
+      35 +    ],
+```
+
+### Try 3
+
+"이렇게 하면 prettier rule의 관리 포인트가 2개가 돼버리잖아. prettier rule을 .prettierrc 하나로만 관리하고 싶고, 더 근본적인 원인을 파악하고 싶어."
+
+마침내 답을 찾았는데, 프로젝트에 설치된 prettier와 `@storybook/codemod` 에서 요구하는 prettier의 버전 충돌 문제였다.
+
+## 근본 원인 파악: 의존성 버전 충돌
+
+### 1. 에러가 어디서 비롯되었나?
+
+에러 메시지를 다시 보자.
+
+```bash
+Plugin: vite-plugin-eslint
+ File: /src/components/tests/TextField.spec.jsx
+
+24:68  error  Replace ⏎····'my-class',⏎·· with 'my-class' prettier/prettier
+```
+
+여기서 주목했던 부분은 아래와 같다.
+
+- **Plugin: vite-plugin-eslint** - 에러를 뱉은 주체
+- **prettier/prettier** - 에러를 발생시킨 룰
+
+### 2. 도구 체인의 흐름
+
+npm run test 명령어를 실행했을 때 다음과 같은 흐름으로 도구들이 작동한다.
+
+```
+vitest 실행 (테스트 프레임워크)
+	↓
+vite-plugin-eslint 로드 (Vite의 플러그인)
+	↓
+eslint 실행 (코드 린팅)
+	↓
+eslint-plugin-prettier 활성화 (eslint 플러그인)
+	↓
+prettier 로드 (포맷팅 검사)
+	↓
+.prettierrc 설정 읽음
+```
+
+이제 각 도구의 역할을 정확히 이해해보자.
+
+### 3. vite-plugin-eslint의 역할
+
+```js
+// vite.config.js에서 설정
+
+import eslint from 'vite-plugin-eslint';
+
+export default defineConfig({
+  plugins: [react(), eslint({ exclude: ['/virtual:/**', 'node_modules/**'] })],
+  // ...
+});
+```
+
+`vite-plugin-eslint`는 Vite의 빌드/개발 프로세스 중에 자동으로 eslint를 실행한다.
+
+- 파일 변경 감지 → 즉시 eslint 검사
+- 테스트 실행 전 → 코드 검사
+- 빌드 시 → 에러 발생 시 중단
+
+즉, "코드 검사의 진입점(entry point)"이다.
+
+### 4. eslint가 prettier 규칙 검사
+
+.eslintrc.json을 보면 `plugin:prettier/recommended` 설정이 추가되어 있다.
+
+```json
+{
+  "extends": [
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:prettier/recommended" // 여기!
+  ],
+  "plugins": ["react", "react-hooks", "prettier"]
+}
+```
+
+이것은 eslint에게 "prettier 규칙도 함께 검사해"라고 지시한다.
+
+흐름으로 보면 다음과 같다.
+
+```
+eslint 검사 중
+	↓
+"prettier/prettier" 규칙 실행
+	↓
+eslint-plugin-prettier에서 prettier 호출
+```
+
+### 5. eslint-plugin-prettier가 하는 일
+
+eslint-plugin-prettier는 prettier를 eslint 규칙처럼 포장하는 어댑터다.
+
+```js
+// eslint-plugin-prettier의 개략적인 내부 동작
+module.exports = {
+  rules: {
+    prettier: {
+      create(context) {
+        return {
+          Program(node) {
+            // 현재 파일의 코드를 prettier로 포맷
+            const formatted = prettier.format(sourceCode, prettierOptions);
+
+            // prettier가 바꾸고 싶어 하는 부분이 있으면 에러 보고
+            if (sourceCode !== formatted) {
+              context.report({
+                message: `Replace \`...\` with \`...\``,
+                fix: (fixer) =>
+                  fixer.replaceTextRange([0, sourceCode.length], formatted),
+              });
+            }
+          },
+        };
+      },
+    },
+  },
+};
+```
+
+아래 코드처럼 `prettier.format()`을 호출할 때, 어떤 버전의 prettier를 로드하느냐가 중요하다.
+
+```js
+const formatted = prettier.format(sourceCode, prettierOptions);
+```
+
+### 6. 문제 발생: prettier 버전 충돌
+
+`npm ls prettier` 출력을 보자.
+
+```bash
+$ npm ls prettier
+test-example-shopping-mall@0.0.0
+├─┬ eslint-plugin-prettier@5.5.5
+│ └── prettier@3.8.1 deduped # 내 프로젝트에서 직접 설치한 버전
+├── prettier@3.8.1
+└─┬ storybook@7.6.21
+└─┬ @storybook/cli@7.6.21
+  ├─┬ @storybook/codemod@7.6.21
+  │ └── prettier@2.8.8  # Storybook에서 요구하는 다른 버전
+  └── prettier@2.8.8
+```
+
+eslint-plugin-prettier가 `prettier.format()`을 호출할 때 Node.js의 모듈 로딩 방식에 따라 다음 중 하나를 찾는다.
+
+```
+1. node_modules/prettier/ (프로젝트 직접 설치)
+2. node_modules/storybook/node_modules/prettier/ (Storybook 자신의 prettier)
+3. 상위 디렉토리 탐색 계속...
+```
+
+운이 좋으면 3.8.1을 찾고, 운이 없으면 2.8.8을 찾는다.
+
+그런데 prettier 2.8.8과 3.8.1은 포맷팅 룰이 달라서, 각 버전별로 코드 포맷이 다르게 해석되어 에러가 발생했던 것이다.
+
+### 7. 정확히 어떤게 다른데?
+
+Claude에게 두 버전의 기본 포맷팅 룰의 차이를 물어보니 Trailing Comma(후행 쉼표) 처리 방식이 다르다는 답변을 받았다.
+
+즉, 설정값은 같지만 해석이 다르다.
+
+> - Prettier 2.8.8: "all" 설정이라도 function arguments에서는 trailing comma를 붙이지 않음
+> - Prettier 3.8.1: "all" 설정을 엄격하게 준수해 모든 곳에 trailing comma 적용
+
+```js:example
+ Prettier 2.8.8:
+  expect(screen.getByPlaceholderText("텍스트를 입력해 주세요.")).toHaveClass(
+    "my-class"  // ← trailingComma 적용 안 됨
+  );
+
+ Prettier 3.8.1:
+  expect(screen.getByPlaceholderText("텍스트를 입력해 주세요.")).toHaveClass(
+    "my-class",  // ← trailingComma: "all" 적용됨
+  );
+```
+
+### 8. 실제로 왜 문제가 생겼나? - 타이밍 문제
+
+1. 테스트 실행: `npm run test`
+
+```bash
+1. vite-plugin-eslint 로드
+2. eslint 실행
+3. eslint-plugin-prettier 활성화
+4. prettier.format() 호출 # 2.8.8 로드됨 (먼저 발견됨)
+5. prettier@2.8.8의 룰로 포맷 검사
+6. 에러 보고!
+```
+
+2. 커맨드라인에서 prettier 직접 실행: `npx prettier --write src/components/TextField.jsx`
+
+```bash
+1. npm bin에서 prettier 실행
+2. node_modules/prettier/bin/prettier.js 로드
+3. prettier@3.8.1 실행
+4. 파일이 이미 올바른 형식이라고 판단 (3.8.1 룰로는)
+5. "unchanged" 출력
+```
+
+같은 파일, 같은 설정인데 어떤 prettier의 버전이 먼저 로드되었느냐에 따라 다른 결과가 나온다.
+
+### 9. 핵심 문제: require 경로 해석
+
+Node.js가 require('prettier')를 할 때 흐름은 아래와 같다.
+
+```bash
+vite-plugin-eslint 컨텍스트에서:
+	↓
+eslint 모듈이 로드됨
+	↓
+eslint-plugin-prettier가 활성화됨
+	↓
+require('prettier') 호출
+	↓
+node_modules 탐색 시작:
+
+- ./node_modules/prettier? ✓ (3.8.1 있음)
+- 하지만 npm의 deduplication 때문에 어떤 버전을 찾을지 보장 안 됨
+- 특히 vite-plugin-eslint가 먼저 로드된 모듈의 컨텍스트를 유지하면...
+- @storybook/codemod의 prettier@2.8.8이 이미 로드되어 있을 수 있음
+- 그 버전이 캐시되어 재사용될 수 있음
+```
+
+> npm deduplication이란? <br />
+> 로컬 패키지 트리를 검색하고, 의존성을 트리 상위 계층으로 이동시켜 여러 종속 패키지가 더 효과적으로 공유할 수 있도록 함으로써 전체 구조를 단순화하려고 시도하는 과정 <br />
+> 참고: [npm-dedupe](https://docs.npmjs.com/cli/v8/commands/npm-dedupe)
+
+이것을 시각적으로 표현해보면 아래와 같다.
+
+```js
+node_modules/
+├── prettier@3.8.1
+├── storybook@7.6.21
+│   └── node_modules/
+│       └── @storybook/codemod@7.6.21
+│           └── node_modules/
+│               └── prettier@2.8.8 // 이미 로드된 상태면 캐시됨
+
+Node.js의 require 캐시 메커니즘:
+
+// 첫 번째 require
+const prettier1 = require('prettier');
+// node_modules/storybook/node_modules/prettier 로드됨
+
+// 두 번째 require (다른 파일에서)
+const prettier2 = require('prettier');
+// 같은 require('prettier')지만, 이미 로드된 버전이 캐시에서 재사용됨
+// prettier1 === prettier2 (같은 인스턴스)
+```
+
+### 10. .prettierrc 해석 이슈
+
+이런 상태에서 문제는, eslint-plugin-prettier가 .prettierrc 해석을 달리 할 수 있다는 것이다.
+
+```js
+// eslint-plugin-prettier의 내부 로직 (개략적)
+const prettier = require('prettier');
+
+// prettier에게 "config 찾아서 로드해줘" 라고 요청
+const options = await prettier.resolveConfig(filePath);
+const formatted = prettier.format(sourceCode, { ...options, parser: 'babel' });
+```
+
+`prettier.resolveConfig()`가 제대로 작동하려면, 로드된 prettier 인스턴스가 올바른 설정 파일을
+찾아야 한다.
+
+하지만 여러 버전이 섞여 있으면 각 버전이 서로 다른 방식으로 설정 파일을 해석할 수 있다.
+
+```
+prettier@3.8.1의 resolveConfig():
+→ .prettierrc 찾음 ✓
+→ 3.8.1의 규칙으로 해석
+
+prettier@2.8.8의 resolveConfig():
+→ .prettierrc 찾음 ✓
+→ 2.8.8의 규칙으로 해석
+→ 3.8.1과 다른 결과!
+```
+
+## 해결책: npm overrides 적용
+
+package.json의 overrides 필드를 사용해서 모든 prettier의 버전이 강제로 통일되도록 했다.
+
+```bash
+{
+  "name": "test-example-shopping-mall",
+  "devDependencies": {
+    "prettier": "^3.0.0",
+    "storybook": "^7.0.27",
+    ...
+  },
+  "overrides": {
+    "prettier": "^3.0.0"
+  }
+}
+```
+
+그리고 npm install을 다시 실행한 뒤 `npm ls prettier`를 실행해보니 다음과 같이 모두 동일한 버전으로 통일된 것을 확인할 수 있었다.
+
+```bash
+$ npm ls prettier
+test-example-shopping-mall@0.0.0
+├─┬ eslint-plugin-prettier@5.5.5
+│ └── prettier@3.8.1 deduped
+├── prettier@3.8.1 overridden  # overrides 적용됨
+└─┬ storybook@7.6.21
+  └─┬ @storybook/cli@7.6.21
+    ├─┬ @storybook/codemod@7.6.21
+    │ └── prettier@3.8.1 deduped  # 통일됨
+    └── prettier@3.8.1 deduped
+```
+
+이후 테스트 코드가 정상적으로 통과되었다.
+
+```bash
+$ npm run test
+
+✓ src/components/tests/TextField.spec.jsx (1 test) 12ms
+
+Test Files 1 passed (1)
+Tests 1 passed (1)
+```
+
+## yarn의 경우: resolutions
+
+yarn을 사용하는 경우 [resolutions](https://classic.yarnpkg.com/lang/en/docs/selective-version-resolutions/) 필드를 사용한다.
+
+```bash
+{
+  "resolutions": {
+    "prettier": "^3.0.0"
+  }
+}
+```
+
+기능은 동일하지만, **npm은 overrides, yarn은 resolutions**라는 점만 다르다.
+
+pnpm도 동일하게 [overrides](https://pnpm.io/9.x/package_json#pnpmoverrides)를 지원한다.
+
+## 실무에서 overrides를 언제 써야 할까?
+
+- **버전 충돌 해결 (내 경우)**
+
+  여러 패키지가 서로 다른 버전의 공통 라이브러리를 요구하여 버전 충돌이 발생할 때, 특정 버전으로 통일할 수 있다.
+
+- **보안 패치 강제 적용**
+
+  의존하고 있는 패키지(A)가 보안 취약점이 있는 하위 패키지(B)의 하위 버전을 사용할 때, overrides를 통해 B의 안전한 버전으로 강제 업데이트할 수 있다.
+
+- **간접 의존성 업데이트**
+
+  package.json에서 정의하지 않은 깊은 하위 패키지의 버전을 수정해야 할 때 사용할 수 있다.
+
+## 주의사항: overrides는 만능이 아니다
+
+### 1. 호환성 문제
+
+overrides로 강제한 버전이 실제로 호환되지 않을 수도 있다.
+
+```bash
+{
+  "overrides": {
+    "some-lib": "^1.0.0" # 실제로는 v2.0.0만 지원하는 경우
+  }
+}
+```
+
+이 경우 런타임 에러가 발생할 수 있으므로, 반드시 호환성을 확인한 후 overrides를 적용해야 한다.
+
+### 2. 과도한 overrides는 유지보수 악화
+
+모든 의존성을 overrides로 관리하려면 유지보수 비용이 급증할 수 있다. (사실 overrides도 땜빵을 하는 느낌)
+
+```bash
+{
+  "overrides": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "lodash": "^4.17.0",
+    "axios": "^1.0.0",
+    // ... 계속 늘어남
+  }
+}
+```
+
+필요한 경우에만 최소한의 범위로 적용하자.
+
+## 마치며
+
+npm의 overrides 기능은 의존성 지옥(dependency hell)에서 벗어나는 강력한 도구다.
+
+하지만 강력한 만큼 신중하게 사용해야 할 것 같다. 버전을 강제할 때는 항상 앞으로 다음 질문들을 스스로에게 던져볼 것 같다.
+
+- "정말로 이 버전이 특정 라이브러리에서 호환이 되나?"
+- "근본적인 해결책은 없을까?" (예: Storybook 업그레이드)
+
+내 경우에는, 인프런에서 테스트 코드 학습을 위해 약 2-3년 전 강의의 Github 레포를 Fork해왔는데, 대부분의 패키지 버전들이 상당히 오래된 상태였다. Storybook도 꽤 오래된 버전을 사용하고 있었고, 이로 인해 prettier 버전 충돌 문제가 발생했던 것이다.
+
+> 26.01.31 기준 <br />
+> Storybook 최신 버전: 10.2.3 <br />
+> 내가 사용한 버전: 7.6.21
+
+사실 Storybook을 최신 버전으로 업그레이드해서 prettier의 버전을 맞추는 것이 더 근본적인 해결책이었겠지만, 이전에 특정 패키지 버전을 업그레이드 시도했다가 다른 의존성 문제들로 인해 고생했던 기억이 있어서 이번에는 overrides로 문제를 해결하는 쪽을 선택했다.
+
+그리고 이전 회사 프로젝트에서 yarn을 사용하면서 resolutions를 활용해 특정 라이브러리 하위 패키지들(package.json에는 명시되지 않은 패키지들)의 의존성 충돌 문제를 해결한 적이 있었는데, 그 때는 stackoverflow를 뒤져가며 "그냥 이렇게 하면 된다더라" 식으로 무지성으로 접근했었던 것 같다.
+
+그 때 기억이 불현듯 스쳐 지나가서 이번에는 overrides, resolutions 관련 문서들을 꼼꼼히 읽어보고, 의존성 트리를 분석해가며 문제의 근본 원인을 파악한 뒤에 해결책을 적용했다.
+
+이번 경험을 통해 overrides/resolutions의 동작 원리와 사용 시 주의사항들을 명확히 이해하게 되었고, 앞으로 실무에서는 최신 버전의 의존성 그래프를 확인한 뒤에 최대한 업그레이드를 하는 편으로 선택할 것 같다.
+
+> [npm graph](https://npmgraph.js.org/)에서 @storybook/codemod의 의존성 트리를 시각적으로 분석해보니 prettier@3.8.1을 요구하는 것을 확인할 수 있었다.
+
+## Reference
+
+- [npm overrides](https://docs.npmjs.com/cli/v10/configuring-npm/package-json#overrides)
+- [pnpm overrides](https://pnpm.io/9.x/package_json#pnpmoverrides)
+- [yarn resolutions](https://classic.yarnpkg.com/lang/en/docs/selective-version-resolutions/)
